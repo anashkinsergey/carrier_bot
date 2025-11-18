@@ -1,4 +1,6 @@
 import os
+import logging
+
 from telegram import (
     Update,
     ReplyKeyboardMarkup,
@@ -8,196 +10,345 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
+    ConversationHandler,
     ContextTypes,
     filters,
 )
 
-# --- Настройки ---
-TOKEN = os.getenv("BOT_TOKEN")          # токен берём ТОЛЬКО из переменной окружения
-OWNER_ID = 407368838                    # твой Telegram ID (@Sergey_Anashkin)
+# ================= НАСТРОЙКИ =================
 
-# --- Клавиатура главного меню ---
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError("Переменная окружения BOT_TOKEN не задана")
+
+# твой основной аккаунт, куда прилетают заявки
+OWNER_ID = 407368838  # @Sergey_Anashkin
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+
+# ================= КЛАВИАТУРЫ =================
+
 MAIN_MENU = ReplyKeyboardMarkup(
     [
-        [KeyboardButton("👶 Планируем / ждём ребёнка")],
-        [KeyboardButton("🩺 Я врач")],
-        [KeyboardButton("📅 Записаться / Оставить контакты")],
-        [KeyboardButton("❓ FAQ")],
+        ["🍼 Планируем / ждём ребёнка"],
+        ["👨‍⚕️ Я врач"],
+        ["❓ Что такое скрининг на носительство?"],
     ],
     resize_keyboard=True,
 )
 
+PLANNING_MENU = ReplyKeyboardMarkup(
+    [
+        ["📄 Получить памятку"],
+        ["✍️ Записаться / Оставить контакты"],
+        ["⬅️ Назад в меню"],
+    ],
+    resize_keyboard=True,
+)
 
-# --- Уведомление владельцу о любом сообщении ---
-async def notify_owner(update: Update, prefix: str | None = None):
+BACK_TO_MENU_KB = ReplyKeyboardMarkup(
+    [
+        ["⬅️ Назад в меню"],
+    ],
+    resize_keyboard=True,
+)
+
+# ================== СТЕЙТЫ ДЛЯ DIALOG FLOW ==================
+
+(
+    CONTACT_NAME,
+    CONTACT_CITY,
+    CONTACT_CONTACT,
+    CONTACT_QUESTION,
+) = range(4)
+
+# ================ ОБЫЧНЫЕ ХЕНДЛЕРЫ ==================
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Стартовое сообщение и главное меню."""
     user = update.effective_user
-    text = update.message.text if update.message else ""
-    header = prefix + "\n\n" if prefix else ""
-
-    msg = (
-        f"{header}"
-        f"👤 Имя: {user.full_name}\n"
-        f"🆔 ID: {user.id}\n"
-        f"👤 Username: @{user.username or '—'}\n\n"
-        f"💬 Текст:\n{text}"
-    )
-
-    await update.get_bot().send_message(chat_id=OWNER_ID, text=msg)
-
-
-# --- /start ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Привет! 👋\n\n"
-        "Я бот проекта «Скрининг на носительство».\n"
-        "Помогаю будущим родителям и врачам разобраться в генетических исследованиях "
-        "и выбрать подходящий формат обследования.\n\n"
-        "Выберите, что вам ближе:",
-        reply_markup=MAIN_MENU,
-    )
-
-
-# --- FAQ ---
-async def send_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "❓ *FAQ по скринингу на носительство*\n\n"
-        "1) *Кому это нужно?*\n"
-        "Парам, которые планируют беременность или ЭКО, а также тем, у кого в семье были "
-        "случаи тяжёлых наследственных заболеваний.\n\n"
-        "2) *Когда лучше делать скрининг?*\n"
-        "Идеально — ДО наступления беременности. Но и во время беременности он тоже может быть полезен.\n\n"
-        "3) *Что показывает анализ?*\n"
-        "Являются ли вы и/или партнёр носителями мутаций, которые повышают риск рождения ребёнка "
-        "с тяжёлым наследственным заболеванием.\n\n"
-        "4) *Если мы оба носители, что дальше?*\n"
-        "Риск выше, но это не приговор. Есть варианты: ЭКО с ПГТ, донорский материал, "
-        "другие репродуктивные решения. Всё обсуждается с врачом-генетиком.\n\n"
-        "5) *Насколько это конфиденциально?*\n"
-        "Результаты относятся к медицинской тайне и не передаются третьим лицам без вашего согласия."
+        "Привет!\n"
+        "Это бот проекта «Скрининг на носительство» — про ответственный подход "
+        "к рождению детей.\n\n"
+        "Выберите раздел:"
     )
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(text, reply_markup=MAIN_MENU)
+    logger.info("User %s (%s) used /start", user.id, user.username)
 
 
-# --- Запрос контактов ---
-async def ask_for_contacts(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["awaiting_contacts"] = True
+async def main_menu_entry(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    """Возврат в главное меню по кнопке."""
+    await update.message.reply_text("Вы в главном меню. Выберите раздел:", reply_markup=MAIN_MENU)
 
-    await update.message.reply_text(
-        "Чтобы записаться или задать вопрос, напишите *одним сообщением*:\n\n"
-        "• Имя\n"
-        "• Город\n"
-        "• Телефон / Telegram / e-mail\n"
-        "• Ваш вопрос или цель обращения\n\n"
-        "Пример:\n"
-        "Мария\n"
-        "Москва\n"
-        "+7...\n"
-        "Планируем беременность, хотим понять, какие исследования нам нужны.",
-        parse_mode="Markdown",
+
+async def planning_entry(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    """Раздел для тех, кто планирует / ждёт ребёнка."""
+    text = (
+        "Отвечаем честно:\n"
+        "• Были ли тяжёлые наследственные заболевания в семье?\n"
+        "• Планируете беременность / ЭКО?\n"
+        "• Есть ли ребёнок с генетическим заболеванием?\n\n"
+        "Даже при спокойной семейной истории скрининг делают как элемент "
+        "ответственного планирования.\n\n"
+        "Здесь вы можете:\n"
+        "• 📄 получить памятку\n"
+        "• ✍️ оставить контакты и вопрос\n"
     )
+    await update.message.reply_text(text, reply_markup=PLANNING_MENU)
 
 
-# --- Отправка заявки владельцу ---
-async def send_lead_to_owner(update: Update):
+async def doctor_entry(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    """Раздел для врачей."""
+    text = (
+        "Раздел для врачей.\n\n"
+        "Если вы хотите рекомендовать пациентам скрининг на носительство и другие "
+        "генетические исследования, напишите, и я свяжусь с вами лично."
+    )
+    await update.message.reply_text(text, reply_markup=BACK_TO_MENU_KB)
+
+
+async def faq_entry(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    """Краткий FAQ — что такое скрининг на носительство."""
+    text = (
+        "Скрининг на носительство — это анализ ДНК здоровых людей, который показывает, "
+        "являются ли они носителями наследственных заболеваний.\n\n"
+        "Зачем это нужно:\n"
+        "• оценить риски для будущих детей,\n"
+        "• вовремя предложить паре расширенные обследования,\n"
+        "• принять более осознанные решения при планировании беременности.\n\n"
+        "Если хотите поговорить подробно — нажмите «Планируем / ждём ребёнка» "
+        "и выберите «Записаться / Оставить контакты»."
+    )
+    await update.message.reply_text(text, reply_markup=MAIN_MENU)
+
+
+async def send_memo(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    """Заглушка под памятку (ссылку можно будет заменить)."""
+    text = (
+        "Скоро здесь появится ссылка на памятку для пациентов.\n\n"
+        "А пока можете задать свой вопрос через раздел «Записаться / Оставить контакты»."
+    )
+    await update.message.reply_text(text, reply_markup=PLANNING_MENU)
+
+
+# ============== ДИАЛОГ СБОРА КОНТАКТОВ ==============
+
+
+async def contact_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Старт диалога — пользователь выбрал 'Записаться / Оставить контакты'."""
     user = update.effective_user
-    text = update.message.text if update.message else ""
 
-    msg = (
-        "📥 *НОВАЯ ЗАЯВКА ОТ ПОЛЬЗОВАТЕЛЯ*\n\n"
-        f"👤 Имя: {user.full_name}\n"
-        f"🆔 ID: {user.id}\n"
-        f"👤 Username: @{user.username or '—'}\n\n"
-        f"📝 Заявка (как написал пользователь):\n{text}"
+    # Уведомим владельца, что человек зашёл в раздел записи
+    notify_text = (
+        "👣 Пользователь зашёл в раздел: «Записаться / Оставить контакты»\n\n"
+        f"Имя: {user.full_name}\n"
+        f"ID: {user.id}\n"
+        f"Username: @{user.username if user.username else '—'}"
+    )
+    try:
+        await context.bot.send_message(chat_id=OWNER_ID, text=notify_text)
+    except Exception as e:
+        logger.warning("Не удалось отправить служебное сообщение владельцу: %s", e)
+
+    context.user_data["lead"] = {}
+
+    suggested_name = user.full_name if user and user.full_name else "Например: Иван Иванов"
+    text = (
+        "Давайте я аккуратно соберу ваши данные, чтобы я или врач могли с вами связаться.\n\n"
+        f"1️⃣ Как к вам обращаться?\n"
+        f"(можно как в Telegram: {suggested_name})"
+    )
+    await update.message.reply_text(text, reply_markup=ReplyKeyboardMarkup([["Отменить"]], resize_keyboard=True))
+    return CONTACT_NAME
+
+
+async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Получаем имя."""
+    name = update.message.text.strip()
+    if not name or name.lower() == "отменить":
+        await update.message.reply_text("Запись отменена. Вы в главном меню.", reply_markup=MAIN_MENU)
+        return ConversationHandler.END
+
+    context.user_data["lead"]["name"] = name
+
+    text = "2️⃣ Из какого вы города?"
+    await update.message.reply_text(text)
+    return CONTACT_CITY
+
+
+async def contact_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Получаем город."""
+    city = update.message.text.strip()
+    if not city or city.lower() == "отменить":
+        await update.message.reply_text("Запись отменена. Вы в главном меню.", reply_markup=MAIN_MENU)
+        return ConversationHandler.END
+
+    context.user_data["lead"]["city"] = city
+
+    # Клавиатура для запроса контакта
+    kb = ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("📱 Отправить мой номер телефона", request_contact=True)],
+            ["Написать контакт вручную"],
+            ["Отменить"],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
     )
 
-    await update.get_bot().send_message(
-        chat_id=OWNER_ID,
-        text=msg,
-        parse_mode="Markdown",
+    text = (
+        "3️⃣ Как с вами лучше связаться?\n"
+        "Вы можете:\n"
+        "• нажать «📱 Отправить мой номер телефона»,\n"
+        "• или выбрать «Написать контакт вручную» и отправить телефон / e-mail / @username."
+    )
+    await update.message.reply_text(text, reply_markup=kb)
+    return CONTACT_CONTACT
+
+
+async def contact_contact_from_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Контакт пришёл кнопкой с номером телефона."""
+    contact = update.message.contact
+    number = contact.phone_number
+    context.user_data["lead"]["contact"] = f"Телефон (кнопкой): {number}"
+
+    text = "4️⃣ Кратко опишите ваш вопрос или ситуацию. Можно в свободной форме."
+    await update.message.reply_text(text, reply_markup=ReplyKeyboardMarkup([["Отменить"]], resize_keyboard=True))
+    return CONTACT_QUESTION
+
+
+async def contact_contact_manual(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Пользователь выбрал ввод контакта вручную или просто написал текст."""
+    text_value = update.message.text.strip()
+
+    if text_value.lower() == "отменить":
+        await update.message.reply_text("Запись отменена. Вы в главном меню.", reply_markup=MAIN_MENU)
+        return ConversationHandler.END
+
+    if text_value == "Написать контакт вручную":
+        await update.message.reply_text(
+            "Пожалуйста, отправьте контакт одним сообщением: телефон, e-mail или @username.",
+        )
+        return CONTACT_CONTACT
+
+    # это уже собственно контакт
+    context.user_data["lead"]["contact"] = text_value
+
+    text = "4️⃣ Кратко опишите ваш вопрос или ситуацию. Можно в свободной форме."
+    await update.message.reply_text(text, reply_markup=ReplyKeyboardMarkup([["Отменить"]], resize_keyboard=True))
+    return CONTACT_QUESTION
+
+
+async def contact_question(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Получаем вопрос и завершаем диалог."""
+    question = update.message.text.strip()
+    if not question or question.lower() == "отменить":
+        await update.message.reply_text("Запись отменена. Вы в главном меню.", reply_markup=MAIN_MENU)
+        return ConversationHandler.END
+
+    context.user_data["lead"]["question"] = question
+
+    user = update.effective_user
+    lead = context.user_data.get("lead", {})
+
+    # ------- отправляем заявку владельцу -------
+    admin_text = (
+        "📩 НОВАЯ ЗАЯВКА ОТ ПОЛЬЗОВАТЕЛЯ\n\n"
+        f"👤 Имя: {lead.get('name', '—')}\n"
+        f"🏙 Город: {lead.get('city', '—')}\n"
+        f"📞 Контакт: {lead.get('contact', '—')}\n"
+        f"📝 Вопрос: {lead.get('question', '—')}\n\n"
+        f"Telegram ID: {user.id}\n"
+        f"Username: @{user.username if user.username else '—'}"
     )
 
+    try:
+        await context.bot.send_message(chat_id=OWNER_ID, text=admin_text)
+    except Exception as e:
+        logger.error("Не удалось отправить заявку владельцу: %s", e)
 
-# --- Общий обработчик текстов ---
-async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_state = context.user_data
-    msg = update.message.text if update.message else ""
-
-    # 1) Если ждём контакты — считаем это заявкой
-    if user_state.get("awaiting_contacts"):
-        user_state["awaiting_contacts"] = False
-
-        # благодарим пользователя
-        await update.message.reply_text(
-            "Спасибо! 🙌\n"
-            "Я передал ваши данные. С вами свяжутся, как только освободятся.",
-            reply_markup=MAIN_MENU,
-        )
-
-        # отправляем тебе структурированную заявку
-        await send_lead_to_owner(update)
-        return
-
-    # 2) Разбор кнопок
-    if msg == "👶 Планируем / ждём ребёнка":
-        await update.message.reply_text(
-            "Это про ответственное планирование 👶\n\n"
-            "Скрининг на носительство помогает заранее понять риск наследственных заболеваний у будущего ребёнка.\n\n"
-            "Обычно его рекомендуют:\n"
-            "• парам, которые планируют беременность или ЭКО;\n"
-            "• если в семье были случаи тяжёлых генетических заболеваний;\n"
-            "• если уже есть ребёнок с генетическим заболеванием.\n\n"
-            "Если хотите, можете нажать «📅 Записаться / Оставить контакты» — и я передам ваш запрос.",
-            reply_markup=MAIN_MENU,
-        )
-        await notify_owner(update, prefix="👶 Сообщение из раздела 'Планируем / ждём ребёнка'")
-        return
-
-    if msg == "🩺 Я врач":
-        await update.message.reply_text(
-            "Для врачей 👩‍⚕️👨‍⚕️\n\n"
-            "Формат сотрудничества:\n"
-            "• создаём для вас *уникальный промокод*;\n"
-            "• пациент получает скидку 3%;\n"
-            "• все кейсы по этому коду привязываются к вам;\n"
-            "• вы получаете агентское вознаграждение.\n\n"
-            "Готовы подключиться? Нажмите «📅 Записаться / Оставить контакты» и напишите, в каком формате вам удобно общаться.",
-            parse_mode="Markdown",
-            reply_markup=MAIN_MENU,
-        )
-        await notify_owner(update, prefix="🩺 Сообщение из раздела 'Я врач'")
-        return
-
-    if msg == "📅 Записаться / Оставить контакты":
-        await ask_for_contacts(update, context)
-        await notify_owner(update, prefix="📅 Пользователь зашёл в раздел 'Записаться / Оставить контакты'")
-        return
-
-    if msg == "❓ FAQ":
-        await send_faq(update, context)
-        await notify_owner(update, prefix="❓ Пользователь открыл FAQ")
-        return
-
-    # 3) Любой свободный текст — просто сообщение + пересылка тебе
+    # ------- отвечаем пользователю -------
     await update.message.reply_text(
-        "Принял 👍\nЕсли хотите вернуться в меню — нажмите /start\n"
-        "Если хотите оставить заявку — нажмите «📅 Записаться / Оставить контакты».",
+        "Спасибо! Ваша заявка отправлена.\n"
+        "Я или врач свяжемся с вами, как только появится возможность.",
         reply_markup=MAIN_MENU,
     )
-    await notify_owner(update, prefix="💬 Свободное сообщение от пользователя")
+
+    # очищаем временные данные
+    context.user_data.pop("lead", None)
+    return ConversationHandler.END
 
 
-# --- Запуск приложения ---
-def main():
-    if not TOKEN:
-        raise ValueError("BOT_TOKEN переменная окружения не установлена")
+async def contact_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Отмена диалога по /cancel или кнопке."""
+    context.user_data.pop("lead", None)
+    await update.message.reply_text("Запись отменена. Вы в главном меню.", reply_markup=MAIN_MENU)
+    return ConversationHandler.END
 
-    app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+# ================== MAIN ==================
 
-    print("Бот запущен.")
-    app.run_polling()
+
+def main() -> None:
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    # --- обычные хендлеры ---
+    application.add_handler(CommandHandler("start", start))
+
+    application.add_handler(
+        MessageHandler(filters.Regex("^⬅️ Назад в меню$"), main_menu_entry)
+    )
+    application.add_handler(
+        MessageHandler(filters.Regex("^🍼 Планируем / ждём ребёнка$"), planning_entry)
+    )
+    application.add_handler(
+        MessageHandler(filters.Regex("^👨‍⚕️ Я врач$"), doctor_entry)
+    )
+    application.add_handler(
+        MessageHandler(filters.Regex("^❓ Что такое скрининг на носительство\\?$"), faq_entry)
+    )
+    application.add_handler(
+        MessageHandler(filters.Regex("^📄 Получить памятку$"), send_memo)
+    )
+
+    # --- диалог по сбору контактов ---
+    contact_conv = ConversationHandler(
+        entry_points=[
+            MessageHandler(filters.Regex("^✍️ Записаться / Оставить контакты$"), contact_start)
+        ],
+        states={
+            CONTACT_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, contact_name)
+            ],
+            CONTACT_CITY: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, contact_city)
+            ],
+            CONTACT_CONTACT: [
+                MessageHandler(filters.CONTACT, contact_contact_from_button),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, contact_contact_manual),
+            ],
+            CONTACT_QUESTION: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, contact_question)
+            ],
+        },
+        fallbacks=[
+            CommandHandler("cancel", contact_cancel),
+            MessageHandler(filters.Regex("^Отменить$"), contact_cancel),
+        ],
+        name="contact_conversation",
+        persistent=False,
+    )
+
+    application.add_handler(contact_conv)
+
+    # Запуск
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
