@@ -35,9 +35,7 @@ OWNER_CHAT_ID = int(os.environ.get("OWNER_CHAT_ID", "0"))
     CONTACT_TIME,
     CONTACT_METHOD,
     CONTACT_CONFIRM,
-    CONTACT_EDIT,
-) = range(7)
-
+) = range(6)
 
 # ---------- утилиты ----------
 
@@ -121,15 +119,6 @@ def t(label: str, lang: str = "ru") -> str:
         "btn_confirm_send": {"ru": "✅ Всё верно, отправить", "en": "✅ Send"},
         "btn_confirm_edit": {"ru": "✏️ Изменить данные", "en": "✏️ Edit data"},
         "btn_confirm_cancel": {"ru": "❌ Отмена", "en": "❌ Cancel"},
-        "edit_what": {
-            "ru": "Что хотите изменить?",
-            "en": "What would you like to change?",
-        },
-        "btn_edit_name": {"ru": "Имя", "en": "Name"},
-        "btn_edit_phone": {"ru": "Телефон", "en": "Phone"},
-        "btn_edit_question": {"ru": "Вопрос", "en": "Question"},
-        "btn_edit_time": {"ru": "Время", "en": "Time"},
-        "btn_edit_method": {"ru": "Способ связи", "en": "Contact method"},
         "lead_sent_user": {
             "ru": "Готово! Я передал вашу заявку. С вами свяжутся в ближайшее время.",
             "en": "Done! Your request has been sent. We will contact you soon.",
@@ -229,7 +218,6 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await doctor_faq_menu_entry(update, context)
 
     elif text == t("btn_contact", lang):
-        # стартуем контактную форму
         return await contact_start(update, context)
 
     elif text == t("btn_faq", lang):
@@ -248,7 +236,6 @@ async def contact_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     lang = get_lang(update)
     context.user_data["lang"] = lang
     context.user_data.setdefault("lead", {})
-    context.user_data.pop("editing_field", None)
 
     kb = ReplyKeyboardMarkup(
         [[t("btn_cancel", lang)]],
@@ -262,7 +249,7 @@ async def contact_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = context.user_data.get("lang", get_lang(update))
     lead: Dict[str, Any] = context.user_data.setdefault("lead", {})
-    text = update.message.text.strip()
+    text = (update.message.text or "").strip()
 
     if is_cancel(text, lang):
         await update.message.reply_text(
@@ -281,8 +268,9 @@ async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = context.user_data.get("lang", get_lang(update))
     lead: Dict[str, Any] = context.user_data.setdefault("lead", {})
-    text = update.message.text.strip()
+    text = (update.message.text or "").strip()
 
+    # Отмена
     if is_cancel(text, lang):
         await update.message.reply_text(
             t("contact_canceled", lang),
@@ -290,6 +278,7 @@ async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         )
         return ConversationHandler.END
 
+    # Назад
     if is_back(text, lang):
         kb = ReplyKeyboardMarkup(
             [[t("btn_cancel", lang)]],
@@ -299,6 +288,31 @@ async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         await update.message.reply_text(t("name_ask", lang), reply_markup=kb)
         return CONTACT_NAME
 
+    # Валидация номера: оставляем только цифры, их должно быть >= 10
+    digits = re.findall(r"\d", text)
+    if len(digits) < 10:
+        if lang == "ru":
+            msg = (
+                "Похоже, номер в непривычном формате 🤔\n\n"
+                "Пожалуйста, отправьте номер телефона *цифрами*, "
+                "например: `+7 999 123-45-67`."
+            )
+        else:
+            msg = (
+                "This doesn’t look like a valid phone number 🤔\n\n"
+                "Please send your phone number *using digits*, "
+                "for example: `+1 202 555 0119`."
+            )
+
+        kb = back_cancel_keyboard(lang)
+        await update.message.reply_text(
+            msg,
+            reply_markup=kb,
+            parse_mode="Markdown",
+        )
+        return CONTACT_PHONE  # остаёмся на шаге ввода телефона
+
+    # если ок — сохраняем как есть (в исходном формате пользователя)
     lead["phone"] = text
 
     kb = back_cancel_keyboard(lang)
@@ -309,7 +323,7 @@ async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 async def contact_question(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = context.user_data.get("lang", get_lang(update))
     lead: Dict[str, Any] = context.user_data.setdefault("lead", {})
-    text = update.message.text.strip()
+    text = (update.message.text or "").strip()
 
     if is_cancel(text, lang):
         await update.message.reply_text(
@@ -341,7 +355,7 @@ async def contact_question(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def contact_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = context.user_data.get("lang", get_lang(update))
     lead: Dict[str, Any] = context.user_data.setdefault("lead", {})
-    text = update.message.text.strip()
+    text = (update.message.text or "").strip()
 
     if is_cancel(text, lang):
         await update.message.reply_text(
@@ -355,7 +369,6 @@ async def contact_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await update.message.reply_text(t("question_ask", lang), reply_markup=kb)
         return CONTACT_QUESTION
 
-    # свободная формулировка времени (если мы когда-нибудь добавим такую кнопку)
     if text.lower().strip() in {"напишу свой вариант"}:
         kb = ReplyKeyboardMarkup(
             [[t("btn_cancel", lang)]],
@@ -386,7 +399,7 @@ async def contact_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def contact_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = context.user_data.get("lang", get_lang(update))
     lead: Dict[str, Any] = context.user_data.setdefault("lead", {})
-    text = update.message.text.strip()
+    text = (update.message.text or "").strip()
 
     if is_cancel(text, lang):
         await update.message.reply_text(
@@ -451,7 +464,7 @@ async def contact_show_summary(update: Update, context: ContextTypes.DEFAULT_TYP
 async def contact_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lang = context.user_data.get("lang", get_lang(update))
     lead: Dict[str, Any] = context.user_data.setdefault("lead", {})
-    text = update.message.text.strip()
+    text = (update.message.text or "").strip()
 
     if text == t("btn_confirm_cancel", lang) or is_cancel(text, lang):
         await update.message.reply_text(
@@ -487,7 +500,7 @@ async def contact_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return ConversationHandler.END
 
     if text == t("btn_confirm_edit", lang):
-        # упрощённый вариант: заполнить заново
+        # упрощённо — начинаем заново
         context.user_data.pop("lead", None)
         return await contact_start(update, context)
 
@@ -732,9 +745,9 @@ def main() -> None:
     # /start
     application.add_handler(CommandHandler("start", start))
 
-    # --- contact conversation ---
-    # Паттерн, совпадающий с текстом кнопки на RU и EN
-    pattern_contact = rf"^{re.escape(t('btn_contact', 'ru'))}$|^{re.escape(t('btn_contact', 'en'))}$"
+    # contact conversation: запускается только по нажатию на кнопку "Записаться / Оставить контакты"
+    from re import escape
+    pattern_contact = rf"^{escape(t('btn_contact', 'ru'))}$|^{escape(t('btn_contact', 'en'))}$"
 
     contact_conv = ConversationHandler(
         entry_points=[
@@ -746,14 +759,10 @@ def main() -> None:
         states={
             CONTACT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_name)],
             CONTACT_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_phone)],
-            CONTACT_QUESTION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, contact_question)
-            ],
+            CONTACT_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_question)],
             CONTACT_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_time)],
             CONTACT_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_method)],
-            CONTACT_CONFIRM: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, contact_confirm)
-            ],
+            CONTACT_CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_confirm)],
         },
         fallbacks=[],
         allow_reentry=True,
@@ -761,12 +770,12 @@ def main() -> None:
 
     application.add_handler(contact_conv)
 
-    # Обработчик остальных текстовых сообщений (главное меню)
+    # обработчик остальных текстов — главное меню
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu)
     )
 
-    # FAQ коллбэки
+    # FAQ callbacks
     application.add_handler(CallbackQueryHandler(faq_answer, pattern=r"^faq_"))
     application.add_handler(CallbackQueryHandler(doctor_faq_answer, pattern=r"^dfaq_"))
 
