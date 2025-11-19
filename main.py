@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 from typing import Dict, Any
 
@@ -184,46 +185,6 @@ def back_cancel_keyboard(lang: str = "ru") -> ReplyKeyboardMarkup:
     )
 
 
-def time_keyboard(lang: str = "ru") -> ReplyKeyboardMarkup:
-    # можно локализовать, если захочешь
-    return ReplyKeyboardMarkup(
-        [
-            ["Утром", "Днём"],
-            ["Вечером", "Не принципиально"],
-            [t("btn_back", lang), t("btn_cancel", lang)],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
-
-
-def method_keyboard(lang: str = "ru") -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        [
-            ["📞 Звонок", "💬 Telegram"],
-            ["💬 WhatsApp"],
-            [t("btn_back", lang), t("btn_cancel", lang)],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
-
-
-def build_edit_keyboard(lang: str = "ru") -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        [
-            [t("btn_edit_name", lang)],
-            [t("btn_edit_phone", lang)],
-            [t("btn_edit_question", lang)],
-            [t("btn_edit_time", lang)],
-            [t("btn_edit_method", lang)],
-            [t("btn_back", lang), t("btn_cancel", lang)],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
-
-
 def is_back(text: str, lang: str) -> bool:
     return text.strip() == t("btn_back", lang)
 
@@ -268,6 +229,7 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await doctor_faq_menu_entry(update, context)
 
     elif text == t("btn_contact", lang):
+        # стартуем контактную форму
         return await contact_start(update, context)
 
     elif text == t("btn_faq", lang):
@@ -363,7 +325,15 @@ async def contact_question(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     lead["question"] = text
 
-    kb = time_keyboard(lang)
+    kb = ReplyKeyboardMarkup(
+        [
+            ["Утром", "Днём"],
+            ["Вечером", "Не принципиально"],
+            [t("btn_back", lang), t("btn_cancel", lang)],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
     await update.message.reply_text(t("time_ask", lang), reply_markup=kb)
     return CONTACT_TIME
 
@@ -385,7 +355,7 @@ async def contact_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await update.message.reply_text(t("question_ask", lang), reply_markup=kb)
         return CONTACT_QUESTION
 
-    # свободный ввод — просто принимаем как есть
+    # свободная формулировка времени (если мы когда-нибудь добавим такую кнопку)
     if text.lower().strip() in {"напишу свой вариант"}:
         kb = ReplyKeyboardMarkup(
             [[t("btn_cancel", lang)]],
@@ -400,7 +370,15 @@ async def contact_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     lead["time"] = text
 
-    kb = method_keyboard(lang)
+    kb = ReplyKeyboardMarkup(
+        [
+            ["📞 Звонок", "💬 Telegram"],
+            ["💬 WhatsApp"],
+            [t("btn_back", lang), t("btn_cancel", lang)],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
     await update.message.reply_text(t("method_ask", lang), reply_markup=kb)
     return CONTACT_METHOD
 
@@ -418,7 +396,15 @@ async def contact_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return ConversationHandler.END
 
     if is_back(text, lang):
-        kb = time_keyboard(lang)
+        kb = ReplyKeyboardMarkup(
+            [
+                ["Утром", "Днём"],
+                ["Вечером", "Не принципиально"],
+                [t("btn_back", lang), t("btn_cancel", lang)],
+            ],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        )
         await update.message.reply_text(t("time_ask", lang), reply_markup=kb)
         return CONTACT_TIME
 
@@ -501,102 +487,15 @@ async def contact_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return ConversationHandler.END
 
     if text == t("btn_confirm_edit", lang):
-        context.user_data["editing_field"] = None
-        await update.message.reply_text(
-            t("edit_what", lang),
-            reply_markup=build_edit_keyboard(lang),
-        )
-        return CONTACT_EDIT
+        # упрощённый вариант: заполнить заново
+        context.user_data.pop("lead", None)
+        return await contact_start(update, context)
 
-    # непонятный ответ — повторить вопрос
     await update.message.reply_text(
         t("confirm_ask", lang),
         reply_markup=build_confirm_keyboard(lang),
     )
     return CONTACT_CONFIRM
-
-
-async def contact_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """
-    Два подрежима в одном состоянии:
-    1) editing_field is None  -> выбираем, что редактировать
-    2) editing_field is not None -> вводим новое значение
-    """
-    lang = context.user_data.get("lang", get_lang(update))
-    lead: Dict[str, Any] = context.user_data.setdefault("lead", {})
-    text = update.message.text.strip()
-    editing_field = context.user_data.get("editing_field")
-
-    # общая обработка отмены
-    if is_cancel(text, lang):
-        await update.message.reply_text(
-            t("contact_canceled", lang),
-            reply_markup=main_menu_keyboard(lang),
-        )
-        context.user_data.pop("editing_field", None)
-        return ConversationHandler.END
-
-    # режим 1: выбираем поле
-    if editing_field is None:
-        if is_back(text, lang):
-            # возвращаемся к сводке без изменений
-            return await contact_show_summary(update, context)
-
-        field_map = {
-            t("btn_edit_name", lang): "name",
-            t("btn_edit_phone", lang): "phone",
-            t("btn_edit_question", lang): "question",
-            t("btn_edit_time", lang): "time",
-            t("btn_edit_method", lang): "method",
-        }
-        field = field_map.get(text)
-        if not field:
-            # не поняли выбор
-            await update.message.reply_text(
-                t("edit_what", lang),
-                reply_markup=build_edit_keyboard(lang),
-            )
-            return CONTACT_EDIT
-
-        # запоминаем, что редактируем
-        context.user_data["editing_field"] = field
-
-        # спрашиваем новое значение
-        if field == "name":
-            prompt = t("name_ask", lang)
-            kb = back_cancel_keyboard(lang)
-        elif field == "phone":
-            prompt = t("phone_ask", lang)
-            kb = back_cancel_keyboard(lang)
-        elif field == "question":
-            prompt = t("question_ask", lang)
-            kb = back_cancel_keyboard(lang)
-        elif field == "time":
-            prompt = t("time_ask", lang)
-            kb = time_keyboard(lang)
-        else:  # method
-            prompt = t("method_ask", lang)
-            kb = method_keyboard(lang)
-
-        await update.message.reply_text(prompt, reply_markup=kb)
-        return CONTACT_EDIT
-
-    # режим 2: ввод нового значения для уже выбранного поля
-    if is_back(text, lang):
-        # возврат к выбору поля
-        context.user_data["editing_field"] = None
-        await update.message.reply_text(
-            t("edit_what", lang),
-            reply_markup=build_edit_keyboard(lang),
-        )
-        return CONTACT_EDIT
-
-    # сохраняем новое значение
-    lead[editing_field] = text
-    context.user_data["editing_field"] = None
-
-    # показываем обновлённую сводку
-    return await contact_show_summary(update, context)
 
 
 # ---------- FAQ для пациентов ----------
@@ -830,20 +729,18 @@ def main() -> None:
 
     application = Application.builder().token(BOT_TOKEN).build()
 
+    # /start
     application.add_handler(CommandHandler("start", start))
+
+    # --- contact conversation ---
+    # Паттерн, совпадающий с текстом кнопки на RU и EN
+    pattern_contact = rf"^{re.escape(t('btn_contact', 'ru'))}$|^{re.escape(t('btn_contact', 'en'))}$"
 
     contact_conv = ConversationHandler(
         entry_points=[
             MessageHandler(
-                filters.TEXT & ~filters.COMMAND,
-                lambda u, c: contact_start(u, c)
-                if (
-                    u.message
-                    and u.message.text
-                    and u.message.text.strip()
-                    in (t("btn_contact", get_lang(u)),)
-                )
-                else ConversationHandler.END,
+                filters.Regex(pattern_contact),
+                contact_start,
             )
         ],
         states={
@@ -857,7 +754,6 @@ def main() -> None:
             CONTACT_CONFIRM: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, contact_confirm)
             ],
-            CONTACT_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_edit)],
         },
         fallbacks=[],
         allow_reentry=True,
@@ -865,10 +761,12 @@ def main() -> None:
 
     application.add_handler(contact_conv)
 
+    # Обработчик остальных текстовых сообщений (главное меню)
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu)
     )
 
+    # FAQ коллбэки
     application.add_handler(CallbackQueryHandler(faq_answer, pattern=r"^faq_"))
     application.add_handler(CallbackQueryHandler(doctor_faq_answer, pattern=r"^dfaq_"))
 
@@ -877,4 +775,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    
