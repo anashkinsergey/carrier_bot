@@ -19,7 +19,9 @@ from telegram.ext import (
     filters,
 )
 
-# ---------- логирование ----------
+# ---------------------------------------------------------------------
+# ЛОГИРОВАНИЕ
+# ---------------------------------------------------------------------
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -28,7 +30,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.info("🚀 Bot started: carrier_screening_bot")
 
-# ---------- токены / ID ----------
+
+# ---------------------------------------------------------------------
+# НАСТРОЙКИ / ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
+# ---------------------------------------------------------------------
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 OWNER_CHAT_ID = int(os.environ.get("OWNER_CHAT_ID", "0"))
@@ -42,20 +47,20 @@ OWNER_CHAT_ID = int(os.environ.get("OWNER_CHAT_ID", "0"))
     CONTACT_CONFIRM,
 ) = range(6)
 
-# ---------- утилиты ----------
 
+# ---------------------------------------------------------------------
+# I18N / ТЕКСТЫ
+# ---------------------------------------------------------------------
 
 def get_lang(update: Update) -> str:
-    """Определяем язык по Telegram-профилю (ru / en)."""
+    """Определяем язык Telegram-профиля."""
     user = update.effective_user
     code = (user.language_code or "").lower() if user else ""
-    if code.startswith("ru"):
-        return "ru"
-    return "en"
+    return "ru" if code.startswith("ru") else "en"
 
 
 def t(label: str, lang: str = "ru") -> str:
-    """Простейшая i18n-табличка."""
+    """Простая таблица переводов."""
     texts = {
         "greeting": {
             "ru": (
@@ -67,165 +72,112 @@ def t(label: str, lang: str = "ru") -> str:
                 "How can I help you?"
             ),
         },
-        "main_menu_title": {
-            "ru": "Выберите раздел:",
-            "en": "Choose a section:",
-        },
-        "btn_plan": {
-            "ru": "👶 Планируем / ждём ребёнка",
-            "en": "👶 Planning / expecting a baby",
-        },
-        "btn_doctor": {
-            "ru": "👨‍⚕️ Я врач",
-            "en": "👨‍⚕️ I am a doctor",
-        },
-        "btn_contact": {
-            "ru": "📝 Записаться / Оставить контакты",
-            "en": "📝 Leave contacts / book a call",
-        },
-        "btn_faq": {
-            "ru": "❓ FAQ",
-            "en": "❓ FAQ",
-        },
-        "btn_back": {
-            "ru": "⬅️ Назад",
-            "en": "⬅️ Back",
-        },
-        "btn_cancel": {
-            "ru": "❌ Отмена",
-            "en": "❌ Cancel",
-        },
+        "main_menu_title": {"ru": "Выберите раздел:", "en": "Choose a section:"},
+        "btn_plan": {"ru": "👶 Планируем / ждём ребёнка", "en": "👶 Planning / expecting a baby"},
+        "btn_doctor": {"ru": "👨‍⚕️ Я врач", "en": "👨‍⚕️ I am a doctor"},
+        "btn_contact": {"ru": "📝 Записаться / Оставить контакты", "en": "📝 Leave contacts / book a call"},
+        "btn_faq": {"ru": "❓ FAQ", "en": "❓ FAQ"},
+        "btn_back": {"ru": "⬅️ Назад", "en": "⬅️ Back"},
+        "btn_cancel": {"ru": "❌ Отмена", "en": "❌ Cancel"},
+
         "name_ask": {
             "ru": "Как к вам обращаться? (имя или имя + фамилия)",
             "en": "How should I call you? (name or full name)",
         },
         "phone_ask": {
             "ru": "Напишите, пожалуйста, номер телефона для связи:",
-            "en": "Please send your phone number (with country code, e.g. +7…):",
+            "en": "Please send your phone number (with country code):",
         },
         "phone_invalid": {
             "ru": (
                 "Похоже, номер в непривычном формате 🤔\n\n"
-                "Пожалуйста, отправьте номер телефона *цифрами*, "
-                "например: `+7 999 123-45-67`."
+                "Пожалуйста, отправьте номер *цифрами*, например: `+7 999 123-45-67`."
             ),
             "en": (
                 "This doesn’t look like a valid phone number 🤔\n\n"
-                "Please send your phone number *using digits*, "
-                "for example: `+1 202 555 0119`."
+                "Please send your phone *using digits*, e.g. `+1 202 555 0119`."
             ),
         },
+
         "question_ask": {
             "ru": (
                 "Кратко опишите, какой у вас вопрос?\n"
                 "(например: планирование беременности, скрининг на носительство, консультация генетика)"
             ),
-            "en": "Briefly describe your question or situation.",
+            "en": "Briefly describe your question.",
         },
+
         "time_ask": {
-            "ru": "Когда вам удобно поговорить?\nВыберите вариант или напишите свой:",
-            "en": "When is it convenient to talk? Choose an option or type your own:",
+            "ru": "Когда вам удобно поговорить? Выберите вариант или напишите свой:",
+            "en": "When is it convenient to talk? Choose or type your own:",
         },
+
         "time_freeform": {
-            "ru": "Укажите удобное время для связи в свободной форме:",
-            "en": "Please specify a convenient time in free form:",
+            "ru": "Укажите удобное время в свободной форме:",
+            "en": "Specify time in free form:",
         },
-        "method_ask": {
-            "ru": "Как удобнее с вами связаться?",
-            "en": "How would you like us to contact you?",
-        },
+
+        "method_ask": {"ru": "Как удобнее связаться?", "en": "Preferred contact method:"},
+
         "contact_canceled": {
-            "ru": (
-                "Заявка отменена. Если передумаете — просто нажмите снова "
-                "«Записаться / Оставить контакты»."
-            ),
-            "en": (
-                "Request cancelled. If you change your mind, just press "
-                "“Leave contacts / book a call” again."
-            ),
+            "ru": "Заявка отменена. Чтобы начать снова — нажмите «Записаться / Оставить контакты».",
+            "en": "Request cancelled. To try again, press “Leave contacts / book a call”.",
         },
-        "contact_summary": {
-            "ru": "Проверьте, всё ли верно:\n\n",
-            "en": "Please check your data:\n\n",
-        },
-        "summary_name": {
-            "ru": "Имя",
-            "en": "Name",
-        },
-        "summary_phone": {
-            "ru": "Телефон",
-            "en": "Phone",
-        },
-        "summary_question": {
-            "ru": "Вопрос",
-            "en": "Question",
-        },
-        "summary_time": {
-            "ru": "Удобное время",
-            "en": "Preferred time",
-        },
-        "summary_method": {
-            "ru": "Способ связи",
-            "en": "Contact method",
-        },
+
+        "contact_summary": {"ru": "Проверьте данные:\n", "en": "Please check your data:\n"},
+        "summary_name": {"ru": "Имя", "en": "Name"},
+        "summary_phone": {"ru": "Телефон", "en": "Phone"},
+        "summary_question": {"ru": "Вопрос", "en": "Question"},
+        "summary_time": {"ru": "Удобное время", "en": "Preferred time"},
+        "summary_method": {"ru": "Способ связи", "en": "Contact method"},
+
         "confirm_ask": {
-            "ru": (
-                "Если всё верно — отправляем заявку?\n\n"
-                "Вы можете отправить, изменить данные или отменить."
-            ),
-            "en": (
-                "If everything is correct, should we send your request?\n\n"
-                "You can send, edit data or cancel."
-            ),
+            "ru": "Отправляем заявку? Можно отправить, изменить данные или отменить.",
+            "en": "Send request? You may send, edit or cancel.",
         },
-        "btn_confirm_send": {
-            "ru": "✅ Всё верно, отправить",
-            "en": "✅ Send",
-        },
-        "btn_confirm_edit": {
-            "ru": "✏️ Изменить данные",
-            "en": "✏️ Edit data",
-        },
-        "btn_confirm_cancel": {
-            "ru": "❌ Отмена",
-            "en": "❌ Cancel",
-        },
+
+        "btn_confirm_send": {"ru": "✅ Отправить", "en": "✅ Send"},
+        "btn_confirm_edit": {"ru": "✏️ Изменить", "en": "✏️ Edit"},
+        "btn_confirm_cancel": {"ru": "❌ Отмена", "en": "❌ Cancel"},
+
         "lead_sent_user": {
             "ru": "Готово! Я передал вашу заявку. С вами свяжутся в ближайшее время.",
-            "en": "Done! Your request has been sent. We will contact you soon.",
+            "en": "Done! Your request has been sent. We’ll contact you soon.",
         },
-        "lead_sent_owner_title": {
-            "ru": "📬 НОВАЯ ЗАЯВКА ОТ ПОЛЬЗОВАТЕЛЯ",
-            "en": "📬 NEW LEAD FROM USER",
-        },
+
+        "lead_sent_owner_title": {"ru": "📬 Новая заявка", "en": "📬 New Lead"},
         "unknown_command": {
-            "ru": "Я пока не знаю, что с этим сделать. Используйте кнопки меню ниже.",
-            "en": "I don’t know what to do with this yet. Please use the menu buttons below.",
+            "ru": "Пока не знаю, что делать с этим. Используйте меню ниже.",
+            "en": "I don’t know what to do with that. Use the menu below.",
         },
+
         "faq_menu_title": {
-            "ru": "❓ *FAQ по скринингу на носительство*\n\nВыберите интересующий вопрос:",
-            "en": "❓ *FAQ about carrier screening*\n\nChoose a question:",
+            "ru": "❓ *FAQ по скринингу на носительство*\n\nВыберите вопрос:",
+            "en": "❓ *Carrier screening FAQ*\n\nChoose a question:",
         },
+
         "faq_doctor_title": {
-            "ru": "👨‍⚕️ *FAQ для врачей*\n\nВыберите вопрос:",
-            "en": "👨‍⚕️ *FAQ for doctors*\n\nChoose a question:",
+            "ru": "👨‍⚕️ *FAQ для врачей*\n",
+            "en": "👨‍⚕️ *Doctor FAQ*\n",
         },
+
         "doctor_intro": {
             "ru": (
-                "Раздел для врачей. Здесь — рациональное зерно:\n"
-                "когда направлять на скрининг, как объяснять пациентам и как использовать результат.\n\n"
-                "Выберите вопрос ниже."
+                "Раздел для врачей: когда направлять, как объяснять пациентам и как использовать результаты.\n"
             ),
             "en": (
-                "Section for doctors: when to refer, how to explain carrier screening "
-                "and how to use the results.\n\nChoose a question below."
+                "For doctors: when to refer, how to explain screening and how to use the results.\n"
             ),
         },
     }
     return texts.get(label, {}).get(lang, texts.get(label, {}).get("ru", label))
 
 
-def main_menu_keyboard(lang: str = "ru") -> ReplyKeyboardMarkup:
+# ---------------------------------------------------------------------
+# КЛАВИАТУРЫ
+# ---------------------------------------------------------------------
+
+def main_menu_keyboard(lang: str) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
             [t("btn_plan", lang)],
@@ -237,45 +189,32 @@ def main_menu_keyboard(lang: str = "ru") -> ReplyKeyboardMarkup:
     )
 
 
-def back_cancel_keyboard(lang: str = "ru") -> ReplyKeyboardMarkup:
+def back_cancel_keyboard(lang: str) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [[t("btn_back", lang), t("btn_cancel", lang)]],
         resize_keyboard=True,
-        one_time_keyboard=True,
     )
 
 
-def is_back(text: str, lang: str) -> bool:
-    return text.strip() == t("btn_back", lang)
+def is_back(txt: str, lang: str) -> bool:
+    return txt == t("btn_back", lang)
 
 
-def is_cancel(text: str, lang: str) -> bool:
-    return text.strip() == t("btn_cancel", lang)
+def is_cancel(txt: str, lang: str) -> bool:
+    return txt == t("btn_cancel", lang)
 
 
 def is_valid_phone(phone: str) -> bool:
-    """
-    Простая проверка телефона:
-    - берём только цифры
-    - минимум 10 цифр
-    """
+    """Минимум 10 цифр."""
     digits = re.findall(r"\d", phone)
     return len(digits) >= 10
 
 
-# ---------- главное меню ----------
+# ---------------------------------------------------------------------
+# ГЛАВНОЕ МЕНЮ
+# ---------------------------------------------------------------------
 
-
-async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    lang = get_lang(update)
-    msg = update.message or update.callback_query.message  # type: ignore
-    await msg.reply_text(
-        t("main_menu_title", lang),
-        reply_markup=main_menu_keyboard(lang),
-    )
-
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
     await update.message.reply_text(
         t("greeting", lang),
@@ -283,18 +222,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
-async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
-    text = (update.message.text or "").strip()
+    msg = update.message or update.callback_query.message
+    await msg.reply_text(t("main_menu_title", lang), reply_markup=main_menu_keyboard(lang))
+
+
+async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = get_lang(update)
+    text = update.message.text.strip()
 
     if text == t("btn_plan", lang):
-        msg = (
-            "👶 Раздел для пар, которые планируют беременность или ждут ребёнка.\n\n"
-            "Скрининг на носительство помогает заранее понять генетические риски "
-            "и при необходимости обсудить варианты с врачом-генетиком.\n\n"
-            "Если хотите, оставьте контакты — и с вами свяжутся для детального разбора."
+        await update.message.reply_text(
+            "👶 Раздел для пар, которые планируют беременность.\n\n"
+            "Скрининг помогает заранее узнать генетические риски. "
+            "При желании — оставьте контакты, и мы свяжемся с вами."
         )
-        await update.message.reply_text(msg)
 
     elif text == t("btn_doctor", lang):
         await doctor_faq_menu_entry(update, context)
@@ -312,96 +255,71 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
 
 
-# ---------- контактная форма ----------
+# ---------------------------------------------------------------------
+# КОНТАКТНАЯ ФОРМА
+# ---------------------------------------------------------------------
 
-
-async def contact_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def contact_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
     context.user_data["lang"] = lang
-    context.user_data.setdefault("lead", {})
+    context.user_data["lead"] = {}
 
-    kb = ReplyKeyboardMarkup(
-        [[t("btn_cancel", lang)]],
-        resize_keyboard=True,
-        one_time_keyboard=True,
+    await update.message.reply_text(
+        t("name_ask", lang),
+        reply_markup=ReplyKeyboardMarkup([[t("btn_cancel", lang)]], resize_keyboard=True),
     )
-    await update.message.reply_text(t("name_ask", lang), reply_markup=kb)
     return CONTACT_NAME
 
 
-async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    lang = context.user_data.get("lang", get_lang(update))
-    lead: Dict[str, Any] = context.user_data.setdefault("lead", {})
-    text = (update.message.text or "").strip()
+async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = context.user_data["lang"]
+    txt = update.message.text.strip()
 
-    if is_cancel(text, lang):
-        await update.message.reply_text(
-            t("contact_canceled", lang),
-            reply_markup=main_menu_keyboard(lang),
-        )
-        return ConversationHandler.END
+    if is_cancel(txt, lang):
+        return await cancel_contact(update)
 
-    lead["name"] = text
+    context.user_data["lead"]["name"] = txt
 
-    kb = back_cancel_keyboard(lang)
-    await update.message.reply_text(t("phone_ask", lang), reply_markup=kb)
+    await update.message.reply_text(
+        t("phone_ask", lang),
+        reply_markup=back_cancel_keyboard(lang),
+    )
     return CONTACT_PHONE
 
 
-async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    lang = context.user_data.get("lang", get_lang(update))
-    lead: Dict[str, Any] = context.user_data.setdefault("lead", {})
-    text = (update.message.text or "").strip()
+async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = context.user_data["lang"]
+    txt = update.message.text.strip()
 
-    if is_cancel(text, lang):
-        await update.message.reply_text(
-            t("contact_canceled", lang),
-            reply_markup=main_menu_keyboard(lang),
-        )
-        return ConversationHandler.END
+    if is_cancel(txt, lang):
+        return await cancel_contact(update)
+    if is_back(txt, lang):
+        return await contact_start(update, context)
 
-    if is_back(text, lang):
-        kb = ReplyKeyboardMarkup(
-            [[t("btn_cancel", lang)]],
-            resize_keyboard=True,
-            one_time_keyboard=True,
-        )
-        await update.message.reply_text(t("name_ask", lang), reply_markup=kb)
-        return CONTACT_NAME
-
-    if not is_valid_phone(text):
+    if not is_valid_phone(txt):
         await update.message.reply_text(
             t("phone_invalid", lang),
-            reply_markup=back_cancel_keyboard(lang),
             parse_mode="Markdown",
+            reply_markup=back_cancel_keyboard(lang),
         )
         return CONTACT_PHONE
 
-    lead["phone"] = text
+    context.user_data["lead"]["phone"] = txt
 
-    kb = back_cancel_keyboard(lang)
-    await update.message.reply_text(t("question_ask", lang), reply_markup=kb)
+    await update.message.reply_text(t("question_ask", lang), reply_markup=back_cancel_keyboard(lang))
     return CONTACT_QUESTION
 
 
-async def contact_question(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    lang = context.user_data.get("lang", get_lang(update))
-    lead: Dict[str, Any] = context.user_data.setdefault("lead", {})
-    text = (update.message.text or "").strip()
+async def contact_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = context.user_data["lang"]
+    txt = update.message.text.strip()
 
-    if is_cancel(text, lang):
-        await update.message.reply_text(
-            t("contact_canceled", lang),
-            reply_markup=main_menu_keyboard(lang),
-        )
-        return ConversationHandler.END
-
-    if is_back(text, lang):
-        kb = back_cancel_keyboard(lang)
-        await update.message.reply_text(t("phone_ask", lang), reply_markup=kb)
+    if is_cancel(txt, lang):
+        return await cancel_contact(update)
+    if is_back(txt, lang):
         return CONTACT_PHONE
 
-    lead["question"] = text
+    context.user_data["lead"]["question"] = txt
 
     kb = ReplyKeyboardMarkup(
         [
@@ -410,31 +328,21 @@ async def contact_question(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             [t("btn_back", lang), t("btn_cancel", lang)],
         ],
         resize_keyboard=True,
-        one_time_keyboard=True,
     )
     await update.message.reply_text(t("time_ask", lang), reply_markup=kb)
     return CONTACT_TIME
 
 
-async def contact_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    lang = context.user_data.get("lang", get_lang(update))
-    lead: Dict[str, Any] = context.user_data.setdefault("lead", {})
-    text = (update.message.text or "").strip()
+async def contact_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = context.user_data["lang"]
+    txt = update.message.text.strip()
 
-    if is_cancel(text, lang):
-        await update.message.reply_text(
-            t("contact_canceled", lang),
-            reply_markup=main_menu_keyboard(lang),
-        )
-        return ConversationHandler.END
-
-    if is_back(text, lang):
-        kb = back_cancel_keyboard(lang)
-        await update.message.reply_text(t("question_ask", lang), reply_markup=kb)
+    if is_cancel(txt, lang):
+        return await cancel_contact(update)
+    if is_back(txt, lang):
         return CONTACT_QUESTION
 
-    # допускаем свободный ввод времени
-    lead["time"] = text
+    context.user_data["lead"]["time"] = txt
 
     kb = ReplyKeyboardMarkup(
         [
@@ -443,435 +351,326 @@ async def contact_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             [t("btn_back", lang), t("btn_cancel", lang)],
         ],
         resize_keyboard=True,
-        one_time_keyboard=True,
     )
     await update.message.reply_text(t("method_ask", lang), reply_markup=kb)
     return CONTACT_METHOD
 
 
-async def contact_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    lang = context.user_data.get("lang", get_lang(update))
-    lead: Dict[str, Any] = context.user_data.setdefault("lead", {})
-    text = (update.message.text or "").strip()
+async def contact_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = context.user_data["lang"]
+    txt = update.message.text.strip()
 
-    if is_cancel(text, lang):
-        await update.message.reply_text(
-            t("contact_canceled", lang),
-            reply_markup=main_menu_keyboard(lang),
-        )
-        return ConversationHandler.END
-
-    if is_back(text, lang):
-        kb = ReplyKeyboardMarkup(
-            [
-                ["Утром", "Днём"],
-                ["Вечером", "Не принципиально"],
-                [t("btn_back", lang), t("btn_cancel", lang)],
-            ],
-            resize_keyboard=True,
-            one_time_keyboard=True,
-        )
-        await update.message.reply_text(t("time_ask", lang), reply_markup=kb)
+    if is_cancel(txt, lang):
+        return await cancel_contact(update)
+    if is_back(txt, lang):
         return CONTACT_TIME
 
-    lead["method"] = text
+    context.user_data["lead"]["method"] = txt
 
-    return await contact_show_summary(update, context)
-
-
-def build_confirm_keyboard(lang: str) -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        [
-            [t("btn_confirm_send", lang)],
-            [t("btn_confirm_edit", lang)],
-            [t("btn_confirm_cancel", lang)],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
+    return await contact_summary(update, context)
 
 
-async def contact_show_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    lang = context.user_data.get("lang", get_lang(update))
-    lead: Dict[str, Any] = context.user_data.setdefault("lead", {})
+async def contact_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = context.user_data["lang"]
+    lead = context.user_data["lead"]
 
-    summary_lines = [
+    lines = [
         t("contact_summary", lang),
-        f"{t('summary_name', lang)}: {lead.get('name', '-')}",
-        f"{t('summary_phone', lang)}: {lead.get('phone', '-')}",
-        f"{t('summary_question', lang)}: {lead.get('question', '-')}",
-        f"{t('summary_time', lang)}: {lead.get('time', '-')}",
-        f"{t('summary_method', lang)}: {lead.get('method', '-')}",
+        f"{t('summary_name', lang)}: {lead['name']}",
+        f"{t('summary_phone', lang)}: {lead['phone']}",
+        f"{t('summary_question', lang)}: {lead['question']}",
+        f"{t('summary_time', lang)}: {lead['time']}",
+        f"{t('summary_method', lang)}: {lead['method']}",
         "",
         t("confirm_ask", lang),
     ]
-    text = "\n".join(summary_lines)
-
     await update.message.reply_text(
-        text,
-        reply_markup=build_confirm_keyboard(lang),
+        "\n".join(lines),
+        reply_markup=ReplyKeyboardMarkup(
+            [
+                [t("btn_confirm_send", lang)],
+                [t("btn_confirm_edit", lang)],
+                [t("btn_confirm_cancel", lang)],
+            ],
+            resize_keyboard=True,
+        ),
     )
     return CONTACT_CONFIRM
 
 
-async def contact_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    lang = context.user_data.get("lang", get_lang(update))
-    lead: Dict[str, Any] = context.user_data.setdefault("lead", {})
-    text = (update.message.text or "").strip()
+async def cancel_contact(update: Update):
+    lang = get_lang(update)
+    await update.message.reply_text(t("contact_canceled", lang), reply_markup=None)
+    return ConversationHandler.END
 
-    if text == t("btn_confirm_cancel", lang) or is_cancel(text, lang):
-        await update.message.reply_text(
-            t("contact_canceled", lang),
-            reply_markup=main_menu_keyboard(lang),
-        )
-        return ConversationHandler.END
 
-    if text == t("btn_confirm_send", lang):
-        if OWNER_CHAT_ID:
-            user = update.effective_user
-            msg_lines = [
-                t("lead_sent_owner_title", lang),
-                "",
-                f"{t('summary_name', lang)}: {lead.get('name', '-')}",
-                f"{t('summary_phone', lang)}: {lead.get('phone', '-')}",
-                f"{t('summary_question', lang)}: {lead.get('question', '-')}",
-                f"{t('summary_time', lang)}: {lead.get('time', '-')}",
-                f"{t('summary_method', lang)}: {lead.get('method', '-')}",
-                "",
-                f"User ID: {user.id}",
-                f"Username: @{user.username}" if user.username else "Username: -",
-            ]
-            await update.get_bot().send_message(
-                chat_id=OWNER_CHAT_ID,
-                text="\n".join(msg_lines),
-            )
+async def contact_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = context.user_data["lang"]
+    txt = update.message.text.strip()
+    lead = context.user_data["lead"]
 
+    if txt == t("btn_confirm_cancel", lang):
+        return await cancel_contact(update)
+
+    if txt == t("btn_confirm_edit", lang):
+        return await contact_start(update, context)
+
+    if txt == t("btn_confirm_send", lang):
+        await send_lead(update, lang, lead)
         await update.message.reply_text(
             t("lead_sent_user", lang),
             reply_markup=main_menu_keyboard(lang),
         )
         return ConversationHandler.END
 
-    if text == t("btn_confirm_edit", lang):
-        # упрощённый вариант — заполнить всё заново
-        context.user_data.pop("lead", None)
-        return await contact_start(update, context)
-
-    await update.message.reply_text(
-        t("confirm_ask", lang),
-        reply_markup=build_confirm_keyboard(lang),
-    )
     return CONTACT_CONFIRM
 
 
-# ---------- FAQ для пациентов ----------
+async def send_lead(update: Update, lang: str, lead: Dict[str, Any]):
+    """Отправка заявки владельцу."""
+    if not OWNER_CHAT_ID:
+        return
+
+    user = update.effective_user
+    lines = [
+        t("lead_sent_owner_title", lang),
+        "",
+        f"{t('summary_name', lang)}: {lead['name']}",
+        f"{t('summary_phone', lang)}: {lead['phone']}",
+        f"{t('summary_question', lang)}: {lead['question']}",
+        f"{t('summary_time', lang)}: {lead['time']}",
+        f"{t('summary_method', lang)}: {lead['method']}",
+        "",
+        f"User ID: {user.id}",
+        f"Username: @{user.username}" if user.username else "Username: —",
+    ]
+    await update.get_bot().send_message(OWNER_CHAT_ID, "\n".join(lines))
 
 
-def build_patient_faq_keyboard() -> InlineKeyboardMarkup:
-    keyboard = [
+# ---------------------------------------------------------------------
+# FAQ — ПАЦИЕНТЫ
+# ---------------------------------------------------------------------
+
+def patient_keyboard():
+    return InlineKeyboardMarkup([
         [InlineKeyboardButton("1. Кому нужен скрининг?", callback_data="faq_who")],
         [InlineKeyboardButton("2. Когда его лучше делать?", callback_data="faq_when")],
         [InlineKeyboardButton("3. Что показывает анализ?", callback_data="faq_what")],
         [InlineKeyboardButton("4. Если мы оба носители?", callback_data="faq_both")],
-        [
-            InlineKeyboardButton(
-                "5. Чем отличается от обычных анализов крови?", callback_data="faq_diff"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "6. «У нас хорошая генетика, это не про нас?»", callback_data="faq_good_bad"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "7. Как сдаётся анализ и сколько это занимает?",
-                callback_data="faq_how_long",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "8. Это ведь очень дорогой анализ...", callback_data="faq_cost"
-            )
-        ],
-        [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="faq_back")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
+        [InlineKeyboardButton("5. Чем отличается?", callback_data="faq_diff")],
+        [InlineKeyboardButton("6. «У нас хорошая генетика?»", callback_data="faq_good")],
+        [InlineKeyboardButton("7. Как сдаётся и сроки?", callback_data="faq_how")],
+        [InlineKeyboardButton("8. Это ведь очень дорогой анализ...", callback_data="faq_cost")],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="faq_back")],
+    ])
 
 
-async def faq_menu_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+FAQ_PATIENT_TEXTS = {
+    "faq_who": (
+        "1️⃣ *Кому нужен скрининг?*\n\n"
+        "— Парам, планирующим беременность.\n"
+        "— Семьям с ребёнком с наследственным заболеванием.\n"
+        "— При тяжёлых заболеваниях в роду, ранних смертях, невынашивании.\n"
+        "— Близкородственные браки — *особенно*.\n\n"
+        "Каждый человек является носителем мутаций — это не болезнь."
+    ),
+
+    "faq_when": (
+        "2️⃣ *Когда лучше делать скрининг?*\n\n"
+        "Идеально — до беременности.\n"
+        "Можно во время беременности и перед ЭКО.\n"
+        "Чем раньше вы знаете — тем больше у вас вариантов."
+    ),
+
+    "faq_what": (
+        "3️⃣ *Что показывает анализ?*\n\n"
+        "Показывает, являетесь ли вы/партнёр носителем мутаций, которые могут привести "
+        "к тяжёлому наследственному заболеванию у ребёнка.\n\n"
+        "Если оба — носители одной мутации, риск — *25% в каждой беременности*."
+    ),
+
+    "faq_both": (
+        "4️⃣ *Если мы оба носители — это приговор?*\n\n"
+        "Нет. Опции:\n"
+        "— ЭКО + ПГТ\n"
+        "— донорские программы\n"
+        "— пренатальная диагностика\n"
+        "— осознанное решение с пониманием рисков.\n\n"
+        "Результаты нужно обсудить с врачом-генетиком."
+    ),
+
+    "faq_diff": (
+        "5️⃣ *Чем отличается от обычных анализов?*\n\n"
+        "Это ДНК-исследование. Не ищет болезнь, а оценивает риск рождения ребёнка "
+        "с тяжёлым наследственным заболеванием."
+    ),
+
+    "faq_good": (
+        "6️⃣ *«У нас хорошая генетика, это не про нас?»*\n\n"
+        "Каждый человек несёт несколько «тихих» мутаций. "
+        "Проблема возникает только при совпадении у партнёров.\n\n"
+        "Отсутствие болезней в семье ≠ отсутствие рисков."
+    ),
+
+    "faq_how": (
+        "7️⃣ *Как сдаётся анализ и сколько занимает?*\n\n"
+        "— Кровь из вены в пробирку EDTA 2–4 ml.\n"
+        "— *НЕ НАТОЩАК*, без подготовки.\n"
+        "— Лучше без алкоголя/жирного за 3–4 часа.\n"
+        "— Срок: от нескольких дней до нескольких недель.\n\n"
+        "Далее — обсуждение с генетиком."
+    ),
+
+    "faq_cost": (
+        "8️⃣ *Это ведь очень дорогой анализ...*\n\n"
+        "— Да, недёшево. Но сдаётся один раз и остаётся актуальным всю жизнь.\n\n"
+        "— Если рассуждать о цене — подумайте, что находится *«на другой чаше весов»*: "
+        "**спокойствие, понимание рисков и возможность осознанного выбора**.\n\n"
+        "— Расскажите это — про *«дорогой анализ»* — родителям детей с тяжёлыми наследственными "
+        "заболеваниями? Думаете, они бы не отдали всё, чтобы **узнать заранее**?\n\n"
+        "— Чтобы не сомневаться — пройдите **консультацию врача-генетика**. "
+        "Это доступнее, длится *45–60+ минут* и даёт вам **полное понимание**."
+    ),
+}
+
+
+async def faq_menu_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
     text = t("faq_menu_title", lang)
-    reply_markup = build_patient_faq_keyboard()
 
     if update.message:
-        await update.message.reply_text(text, reply_markup=reply_markup)
+        await update.message.reply_text(text, reply_markup=patient_keyboard(), parse_mode="Markdown")
     else:
-        query = update.callback_query
-        await query.answer()
-        await query.edit_message_text(text, reply_markup=reply_markup)
+        q = update.callback_query
+        await q.answer()
+        await q.edit_message_text(text, reply_markup=patient_keyboard(), parse_mode="Markdown")
 
 
-async def faq_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    lang = get_lang(update)
+async def faq_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    data = query.data
 
-    if data == "faq_back":
-        await query.edit_message_text("Возвращаемся в главное меню…")
-        await show_main_menu(update, context)
-        return
+    key = query.data
+    if key == "faq_back":
+        return await show_main_menu(update, context)
 
-    if data == "faq_who":
-        text = (
-            "1️⃣ *Кому нужен скрининг на носительство?*\n\n"
-            "— Парам, которые планируют беременность.\n"
-            "— Семьям, где уже есть ребёнок с наследственным заболеванием.\n"
-            "— Тем, у кого в роду были непонятные тяжёлые заболевания, ранняя детская смертность "
-            "или невынашивание беременности.\n"
-            "— Близкородственные браки — *особенно!*\n\n"
-            "Даже если «все здоровы», каждый человек является носителем мутаций — "
-            "это не болезнь и по самочувствию это не видно."
-        )
-
-    elif data == "faq_when":
-        text = (
-            "2️⃣ *Когда лучше делать скрининг?*\n\n"
-            "Идеально — до наступления беременности, на этапе планирования.\n\n"
-            "Но сделать его можно и во время беременности, и перед ЭКО, и в донорских программах.\n"
-            "Чем раньше вы узнаете о рисках, тем больше у вас будет вариантов для спокойного решения."
-        )
-
-    elif data == "faq_what":
-        text = (
-            "3️⃣ *Что показывает анализ?*\n\n"
-            "Анализ показывает, являетесь ли вы и/или партнёр носителем мутаций, "
-            "которые повышают риск рождения ребёнка с тяжёлым наследственным заболеванием.\n\n"
-            "Если оба родителя — носители одной и той же мутации, риск больного ребёнка — "
-            "*25% для каждой беременности*, даже если в семье уже есть здоровые дети."
-        )
-
-    elif data == "faq_both":
-        text = (
-            "4️⃣ *Если мы оба носители — это приговор?*\n\n"
-            "Нет. Это значит, что есть высокий риск, но есть и варианты решений:\n"
-            "— ЭКО с преимплантационной генетической диагностикой (ПГТ);\n"
-            "— использование донорского материала;\n"
-            "— пренатальная генетическая диагностика (если уже беременны);\n"
-            "— осознанное решение о беременности с пониманием рисков.\n\n"
-            "Ключевое — не оставаться с результатом один на один, а обсудить его с врачом-генетиком."
-        )
-
-    elif data == "faq_diff":
-        text = (
-            "5️⃣ *Чем Скрининг на носительство отличается от обычных анализов крови?*\n\n"
-            "Обычные анализы смотрят текущее состояние организма.\n\n"
-            "Скрининг на носительство — ДНК-исследование. Он не ищет болезнь у вас, а отвечает на вопрос:\n"
-            "«есть ли у нас риск передать нашему ребёнку тяжёлое наследственное заболевание?». "
-            "Большинство таких заболеваний, к сожалению, до сих пор неизлечимы."
-        )
-
-    elif data == "faq_good_bad":
-        text = (
-            "6️⃣ *«У нас хорошая генетика, это не про нас?»*\n\n"
-            "Каждый человек несёт несколько «тихих» мутаций — они никак не проявляются.\n"
-            "Проблема возникает только тогда, когда одинаковая мутация встречается у обоих партнёров.\n\n"
-            "Поэтому отсутствие видимых болезней в семье не равно отсутствию наследственных рисков.\n"
-            "Если брак близкородственный — такое исследование особенно необходимо."
-        )
-
-    elif data == "faq_how_long":
-        text = (
-            "7️⃣ *Как сдаётся анализ и сколько это занимает?*\n\n"
-            "— Как правило, это забор крови из вены в пробирку с EDTA (2–4 ml).\n"
-            "— Подготовки не требуется, *НЕ НАТОЩАК*, в любое время.\n"
-            "— Лучше не есть жирного и не пить алкоголь за 3–4 часа до сдачи.\n"
-            "— Результат готов от нескольких дней до нескольких недель (в зависимости от анализа).\n\n"
-            "Дальше результат обсуждают с врачом-генетиком — чтобы понять, что он значит именно для вашей семьи."
-        )
-
-    elif data == "faq_cost":
-        text = (
-            "8️⃣ *Это ведь очень дорогой анализ...*\n\n"
-            "— Да. Анализ стоит недёшево. Но его достаточно сдать один раз, и он остаётся актуальным для пары на всю жизнь.\n\n"
-            "— Если рассуждать о цене, то стоит также подумать о том, что находится *«на другой чаше весов»* — "
-            "**спокойствие, понимание рисков и возможность осознанного выбора**.\n\n"
-            "— Расскажите это — про *«дорогой анализ»* — родителям детей с тяжёлыми генетическими заболеваниями?\n"
-            "  Думаете, они не отдали бы всё, если бы могли вернуть время назад и **узнать заранее** о таком анализе?\n\n"
-            "— Чтобы не сомневаться — пройдите **консультацию врача-генетика**.\n"
-            "  Это доступнее, консультация длится *45–60+ минут* и даёт вам **полное понимание** и ясность."
-        )
-
-    else:
-        text = "Выберите пункт из меню ниже."
-
-    await query.edit_message_text(text, reply_markup=build_patient_faq_keyboard())
+    text = FAQ_PATIENT_TEXTS.get(key, "Выберите вопрос из меню.")
+    await query.edit_message_text(text, reply_markup=patient_keyboard(), parse_mode="Markdown")
 
 
-# ---------- FAQ для врачей ----------
+# ---------------------------------------------------------------------
+# FAQ — ВРАЧИ
+# ---------------------------------------------------------------------
+
+DOCTOR_FAQ_TEXTS = {
+    "dfaq_who": (
+        "1️⃣ *Кого направлять в первую очередь?*\n\n"
+        "— Пары перед ЭКО\n"
+        "— пары с плохим семейным анамнезом\n"
+        "— группы риска\n\n"
+        "По сути — любую пару, планирующую беременность."
+    ),
+    "dfaq_explain": (
+        "2️⃣ *Как объяснить пациенту?*\n\n"
+        "Мы не ищем болезнь. Мы смотрим, не носители ли они одинаковой мутации, "
+        "которая может передаться ребёнку."
+    ),
+    "dfaq_both": (
+        "3️⃣ *Что делать с парой-носителями?*\n\n"
+        "Консультация генетика обязательна. Опции:\n"
+        "— ЭКО+ПГТ\n"
+        "— донорство\n"
+        "— естественная беременность с пониманием риска."
+    ),
+    "dfaq_geneticist": (
+        "4️⃣ *Нужна ли консультация до / после?*\n\n"
+        "До — желательно.\n"
+        "После выявления мутаций — обязательно."
+    ),
+    "dfaq_practice": (
+        "5️⃣ *Чем помогает на практике?*\n\n"
+        "— выявляет пары высокого риска\n"
+        "— снижает число тяжёлых НЗ\n"
+        "— повышает доверие пациентов"
+    ),
+}
 
 
-def build_doctor_faq_keyboard() -> InlineKeyboardMarkup:
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "1. Кого направлять на скрининг в первую очередь?",
-                callback_data="dfaq_who",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "2. Как объяснить пациентам смысл скрининга?",
-                callback_data="dfaq_explain",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "3. Что делать с парой-носителями?",
-                callback_data="dfaq_both",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "4. Нужна ли консультация генетика до и после?",
-                callback_data="dfaq_geneticist",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "5. Как результат скрининга помогает в реальной практике?",
-                callback_data="dfaq_practice",
-            )
-        ],
-        [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="dfaq_back")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
+def doctor_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("1. Кого направлять?", callback_data="dfaq_who")],
+        [InlineKeyboardButton("2. Как объяснить?", callback_data="dfaq_explain")],
+        [InlineKeyboardButton("3. Пара-носители", callback_data="dfaq_both")],
+        [InlineKeyboardButton("4. Консультация до/после", callback_data="dfaq_geneticist")],
+        [InlineKeyboardButton("5. Польза на практике", callback_data="dfaq_practice")],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="dfaq_back")],
+    ])
 
 
-async def doctor_faq_menu_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def doctor_faq_menu_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
-    text = t("faq_doctor_title", lang) + "\n\n" + t("doctor_intro", lang)
-    kb = build_doctor_faq_keyboard()
+    text = t("faq_doctor_title", lang) + t("doctor_intro", lang)
 
     if update.message:
-        await update.message.reply_text(text, reply_markup=kb)
+        await update.message.reply_text(text, reply_markup=doctor_keyboard(), parse_mode="Markdown")
     else:
-        query = update.callback_query
-        await query.answer()
-        await query.edit_message_text(text, reply_markup=kb)
+        q = update.callback_query
+        await q.answer()
+        await q.edit_message_text(text, reply_markup=doctor_keyboard(), parse_mode="Markdown")
 
 
-async def doctor_faq_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    lang = get_lang(update)
+async def doctor_faq_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    data = query.data
 
-    if data == "dfaq_back":
-        await query.edit_message_text("Возвращаемся в главное меню…")
-        await show_main_menu(update, context)
-        return
+    key = query.data
+    if key == "dfaq_back":
+        return await show_main_menu(update, context)
 
-    if data == "dfaq_who":
-        text = (
-            "1️⃣ *Кого направлять на скрининг в первую очередь?*\n\n"
-            "— Пары на этапе прегравидарной подготовки и перед ЭКО.\n"
-            "— Пары с отягощённым семейным анамнезом (дети с НЗ, ранняя детская смертность).\n"
-            "— Пациенты из популяционных групп с повышенной частотой отдельных заболеваний.\n\n"
-            "По сути — любую пару, которая задумывается о планировании беременности и готова "
-            "к ответственному информированному выбору."
-        )
-    elif data == "dfaq_explain":
-        text = (
-            "2️⃣ *Как объяснить пациенту смысл скрининга?*\n\n"
-            "Рабочая формула: «Мы не ищем болезнь у вас. Мы смотрим, не являетесь ли вы носителями "
-            "генетических вариантов, которые при совпадении у партнёров могут передаться ребёнку».\n\n"
-            "Важно подчеркнуть, что носительство — не диагноз, а повод грамотно спланировать беременность."
-        )
-    elif data == "dfaq_both":
-        text = (
-            "3️⃣ *Что делать с парой-носителями?*\n\n"
-            "Рекомендовано обсуждение с врачом-генетиком. Возможные опции:\n"
-            "— ЭКО с ПГТ;\n"
-            "— донорские программы;\n"
-            "— естественная беременность с пониманием риска и возможностью пренатальной диагностики.\n\n"
-            "Ключевое — донести, что пара не обязана выбирать «правильный» сценарий, но должна понимать риски."
-        )
-    elif data == "dfaq_geneticist":
-        text = (
-            "4️⃣ *Нужна ли консультация генетика до и после скрининга?*\n\n"
-            "Желательна до — чтобы объяснить пациентам цели и ограничения исследования.\n"
-            "Обязательна после выявления клинически значимых мутаций или совпадения носительства у партнёров.\n\n"
-            "Именно генетик должен интерпретировать результаты и помогать в выборе дальнейшей тактики."
-        )
-    elif data == "dfaq_practice":
-        text = (
-            "5️⃣ *Как результат скрининга помогает в реальной практике?*\n\n"
-            "— Позволяет заранее выявить пары с высоким риском тяжёлых НЗ и предложить им альтернативные пути.\n"
-            "— Снижает число «неожиданных» случаев тяжёлых заболеваний у детей.\n"
-            "— Повышает доверие пациентов: они видят, что им предлагают современный превентивный подход.\n\n"
-            "По сути, это инструмент стратификации риска и более осознанного репродуктивного выбора."
-        )
-    else:
-        text = "Выберите вопрос из меню ниже."
-
-    await query.edit_message_text(text, reply_markup=build_doctor_faq_keyboard())
+    text = DOCTOR_FAQ_TEXTS.get(key, "Выберите пункт меню.")
+    await query.edit_message_text(text, reply_markup=doctor_keyboard(), parse_mode="Markdown")
 
 
-# ---------- main ----------
+# ---------------------------------------------------------------------
+# MAIN
+# ---------------------------------------------------------------------
 
-
-def main() -> None:
+def main():
     if not BOT_TOKEN:
-        raise RuntimeError("Не задан BOT_TOKEN в переменных окружения.")
+        raise RuntimeError("Не задан BOT_TOKEN!")
 
-    application = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).build()
 
     # /start
-    application.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("start", start))
 
-    # contact conversation: запускается только по нажатию на кнопку
-    # "Записаться / Оставить контакты" (рус/англ)
+    # ---------------- CONTACT CONVERSATION ----------------
     from re import escape
+    pattern = rf"^{escape(t('btn_contact', 'ru'))}$|^{escape(t('btn_contact', 'en'))}$"
 
-    pattern_contact = rf"^{escape(t('btn_contact', 'ru'))}$|^{escape(t('btn_contact', 'en'))}$"
-
-    contact_conv = ConversationHandler(
-        entry_points=[
-            MessageHandler(
-                filters.Regex(pattern_contact),
-                contact_start,
-            )
-        ],
+    conv = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex(pattern), contact_start)],
         states={
             CONTACT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_name)],
             CONTACT_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_phone)],
-            CONTACT_QUESTION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, contact_question)
-            ],
+            CONTACT_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_question)],
             CONTACT_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_time)],
             CONTACT_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_method)],
-            CONTACT_CONFIRM: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, contact_confirm)
-            ],
+            CONTACT_CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_confirm)],
         },
         fallbacks=[],
         allow_reentry=True,
     )
+    app.add_handler(conv)
 
-    application.add_handler(contact_conv)
+    # Всё остальное → главное меню
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu))
 
-    # обработчик остальных текстов — главное меню
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu)
-    )
+    # FAQ
+    app.add_handler(CallbackQueryHandler(faq_answer, pattern=r"^faq_"))
+    app.add_handler(CallbackQueryHandler(doctor_faq_answer, pattern=r"^dfaq_"))
 
-    # FAQ callbacks
-    application.add_handler(CallbackQueryHandler(faq_answer, pattern=r"^faq_"))
-    application.add_handler(CallbackQueryHandler(doctor_faq_answer, pattern=r"^dfaq_"))
-
-    application.run_polling()
+    app.run_polling()
 
 
 if __name__ == "__main__":
