@@ -1452,7 +1452,6 @@ if __name__ == "__main__":
     main()
 
 
-
 # ---------- FAQ для врачей ----------
 
 def build_doctor_faq_keyboard() -> InlineKeyboardMarkup:
