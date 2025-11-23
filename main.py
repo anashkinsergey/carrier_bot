@@ -8,6 +8,8 @@ from telegram import (
     ReplyKeyboardMarkup,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    KeyboardButton,
+    ReplyKeyboardRemove,
 )
 from telegram.ext import (
     Application,
@@ -89,11 +91,11 @@ def t(label: str, lang: str = "ru") -> str:
         "phone_invalid": {
             "ru": (
                 "Похоже, номер в непривычном формате 🤔\n\n"
-                "Пожалуйста, отправьте номер *цифрами*, например: `+7 999 123-45-67`."
+                "Пожалуйста, отправьте номер *цифрами* и с кодом страны, например: `+7 999 123-45-67`."
             ),
             "en": (
                 "This doesn’t look like a valid phone number 🤔\n\n"
-                "Please send your phone *using digits*, e.g. `+1 202 555 0119`."
+                "Please send your phone *using digits* and country code, e.g. `+1 202 555 0119`."
             ),
         },
 
@@ -199,8 +201,16 @@ def is_cancel(txt: str, lang: str) -> bool:
 
 
 def is_valid_phone(phone: str) -> bool:
-    digits = re.findall(r"\d", phone)
-    return len(digits) >= 10
+    """
+    Простая, но более строгая проверка:
+    - номер должен начинаться с '+'
+    - далее 10–15 цифр (E.164-подобный формат)
+    """
+    cleaned = re.sub(r"[^\d+]", "", phone).strip()
+    if not cleaned.startswith("+"):
+        return False
+    digits = re.findall(r"\d", cleaned)
+    return 10 <= len(digits) <= 15
 
 
 # ---------------------------------------------------------------------
@@ -226,11 +236,10 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
 
     if text == t("btn_plan", lang):
-        # запускаем новый раздел планирования / ожидания ребёнка
-        await plan_start(update, context)
+        return await plan_start(update, context)
 
     elif text == t("btn_doctor", lang):
-        await doctor_faq_menu_entry(update, context)
+        return await doctor_menu_start(update, context)
 
     elif text == t("btn_contact", lang):
         return await contact_start(update, context)
@@ -249,13 +258,13 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # РАЗДЕЛ "ПЛАНИРУЕМ / ЖДЁМ РЕБЁНКА"
 # ---------------------------------------------------------------------
 
-PLAN_MAIN = "plan_main"
+PLAN_MENU = "plan_menu"
+PLAN_BACK_MAIN = "plan_back_main"
 PLAN_WHAT = "plan_what"
 PLAN_RISK = "plan_risk"
 PLAN_BENEFIT = "plan_benefit"
 PLAN_IF_FOUND = "plan_if_found"
 PLAN_HOW = "plan_how"
-PLAN_PICK_TEST = "plan_pick"
 
 
 def build_plan_main_keyboard() -> InlineKeyboardMarkup:
@@ -265,8 +274,8 @@ def build_plan_main_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("Чем это полезно паре?", callback_data=PLAN_BENEFIT)],
         [InlineKeyboardButton("Что если найдут риск?", callback_data=PLAN_IF_FOUND)],
         [InlineKeyboardButton("Как проходит анализ?", callback_data=PLAN_HOW)],
-        [InlineKeyboardButton("Подобрать подходящий тест", callback_data=PLAN_PICK_TEST)],
-        [InlineKeyboardButton("🔙 Назад в меню", callback_data=PLAN_MAIN)],
+        [InlineKeyboardButton("Подобрать подходящий тест", callback_data="contact_from_plan")],
+        [InlineKeyboardButton("🔙 В главное меню", callback_data=PLAN_BACK_MAIN)],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -330,17 +339,13 @@ PLAN_TEXT_HOW = (
     "за 2–3 часа до забора крови."
 )
 
-PLAN_TEXT_PICK = (
-    "Если хотите — подскажу оптимальный вариант, чтобы не переплачивать "
-    "и не упустить важное.\n"
-    "Напишите коротко вашу ситуацию — и я подскажу, что подойдёт именно вам."
-)
-
 
 async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Старт раздела «Планируем / ждём ребёнка» по нажатию кнопки в главном меню."""
     msg = update.message
     if msg:
+        # убираем нижнюю клавиатуру (погружённый режим)
+        await msg.reply_text(" ", reply_markup=ReplyKeyboardRemove())
         await msg.reply_text(
             PLAN_TEXT_INTRO,
             reply_markup=build_plan_main_keyboard(),
@@ -353,15 +358,19 @@ async def plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await query.answer()
     data = query.data
 
-    text = PLAN_TEXT_INTRO
-    keyboard = build_plan_main_keyboard()
+    if data == PLAN_BACK_MAIN:
+        # выходим в главное меню и возвращаем клавиатуру
+        return await show_main_menu(update, context)
 
-    if data == PLAN_WHAT:
+    if data == PLAN_MENU:
+        text = PLAN_TEXT_INTRO
+        keyboard = build_plan_main_keyboard()
+    elif data == PLAN_WHAT:
         text = PLAN_TEXT_WHAT
         keyboard = InlineKeyboardMarkup(
             [
                 [InlineKeyboardButton("Какой риск может быть?", callback_data=PLAN_RISK)],
-                [InlineKeyboardButton("🔙 К выбору вопросов", callback_data=PLAN_MAIN)],
+                [InlineKeyboardButton("🔙 К списку вопросов", callback_data=PLAN_MENU)],
             ]
         )
     elif data == PLAN_RISK:
@@ -369,7 +378,7 @@ async def plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         keyboard = InlineKeyboardMarkup(
             [
                 [InlineKeyboardButton("Чем это полезно паре?", callback_data=PLAN_BENEFIT)],
-                [InlineKeyboardButton("🔙 К выбору вопросов", callback_data=PLAN_MAIN)],
+                [InlineKeyboardButton("🔙 К списку вопросов", callback_data=PLAN_MENU)],
             ]
         )
     elif data == PLAN_BENEFIT:
@@ -377,7 +386,7 @@ async def plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         keyboard = InlineKeyboardMarkup(
             [
                 [InlineKeyboardButton("Что если найдут риск?", callback_data=PLAN_IF_FOUND)],
-                [InlineKeyboardButton("🔙 К выбору вопросов", callback_data=PLAN_MAIN)],
+                [InlineKeyboardButton("🔙 К списку вопросов", callback_data=PLAN_MENU)],
             ]
         )
     elif data == PLAN_IF_FOUND:
@@ -385,26 +394,19 @@ async def plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         keyboard = InlineKeyboardMarkup(
             [
                 [InlineKeyboardButton("Как проходит анализ?", callback_data=PLAN_HOW)],
-                [InlineKeyboardButton("🔙 К выбору вопросов", callback_data=PLAN_MAIN)],
+                [InlineKeyboardButton("🔙 К списку вопросов", callback_data=PLAN_MENU)],
             ]
         )
     elif data == PLAN_HOW:
         text = PLAN_TEXT_HOW
         keyboard = InlineKeyboardMarkup(
             [
-                [InlineKeyboardButton("Подобрать подходящий тест", callback_data=PLAN_PICK_TEST)],
-                [InlineKeyboardButton("🔙 К выбору вопросов", callback_data=PLAN_MAIN)],
-            ]
-        )
-    elif data == PLAN_PICK_TEST:
-        text = PLAN_TEXT_PICK
-        keyboard = InlineKeyboardMarkup(
-            [
-                [InlineKeyboardButton("🔙 К выбору вопросов", callback_data=PLAN_MAIN)],
+                [InlineKeyboardButton("Подобрать подходящий тест", callback_data="contact_from_plan")],
+                [InlineKeyboardButton("🔙 К списку вопросов", callback_data=PLAN_MENU)],
             ]
         )
     else:
-        # если нажата «🔙 Назад в меню» или что-то непонятное
+        # на всякий случай показываем главное внутри раздела
         text = PLAN_TEXT_INTRO
         keyboard = build_plan_main_keyboard()
 
@@ -412,17 +414,76 @@ async def plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 # ---------------------------------------------------------------------
-# КОНТАКТНАЯ ФОРМА
+# КОНТАКТНАЯ ФОРМА + АВТОЗАПУСК ИЗ РАЗДЕЛОВ
 # ---------------------------------------------------------------------
 
 async def contact_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Старт контакта при нажатии на кнопку в главном меню."""
     lang = get_lang(update)
     context.user_data["lang"] = lang
     context.user_data["lead"] = {}
 
+    kb = ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("📱 Отправить мой номер", request_contact=True)],
+            [t("btn_cancel", lang)],
+        ],
+        resize_keyboard=True,
+    )
+
     await update.message.reply_text(
         t("name_ask", lang),
-        reply_markup=ReplyKeyboardMarkup([[t("btn_cancel", lang)]], resize_keyboard=True),
+        reply_markup=kb,
+    )
+    return CONTACT_NAME
+
+
+async def contact_start_from_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Старт контакта из раздела 'Планируем / ждём ребёнка' с автозаполненным вопросом."""
+    lang = get_lang(update)
+    context.user_data["lang"] = lang
+    context.user_data["lead"] = {"question": "Хочу подобрать тест"}
+
+    q = update.callback_query
+    await q.answer()
+
+    kb = ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("📱 Отправить мой номер", request_contact=True)],
+            [t("btn_cancel", lang)],
+        ],
+        resize_keyboard=True,
+    )
+
+    await q.message.reply_text(
+        t("name_ask", lang),
+        reply_markup=kb,
+    )
+    return CONTACT_NAME
+
+
+async def contact_start_from_doctor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Старт контакта из раздела 'Я врач' с автозаполненным вопросом."""
+    lang = get_lang(update)
+    context.user_data["lang"] = lang
+    context.user_data["lead"] = {
+        "question": "Я врач. Хочу получить методический лист и материалы по скринингу / обсудить сотрудничество."
+    }
+
+    q = update.callback_query
+    await q.answer()
+
+    kb = ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("📱 Отправить мой номер", request_contact=True)],
+            [t("btn_cancel", lang)],
+        ],
+        resize_keyboard=True,
+    )
+
+    await q.message.reply_text(
+        t("name_ask", lang),
+        reply_markup=kb,
     )
     return CONTACT_NAME
 
@@ -436,21 +497,35 @@ async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data["lead"]["name"] = txt
 
+    kb = ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("📱 Отправить мой номер", request_contact=True)],
+            [t("btn_back", lang), t("btn_cancel", lang)],
+        ],
+        resize_keyboard=True,
+    )
+
     await update.message.reply_text(
         t("phone_ask", lang),
-        reply_markup=back_cancel_keyboard(lang),
+        reply_markup=kb,
     )
     return CONTACT_PHONE
 
 
 async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data["lang"]
-    txt = update.message.text.strip()
 
-    if is_cancel(txt, lang):
-        return await cancel_contact(update)
-    if is_back(txt, lang):
-        return await contact_start(update, context)
+    # Если пользователь нажал кнопку "Отправить мой номер"
+    if update.message.contact:
+        phone_raw = update.message.contact.phone_number
+        txt = phone_raw.strip()
+    else:
+        txt = update.message.text.strip()
+
+        if is_cancel(txt, lang):
+            return await cancel_contact(update)
+        if is_back(txt, lang):
+            return await contact_start(update, context)
 
     if not is_valid_phone(txt):
         await update.message.reply_text(
@@ -461,6 +536,20 @@ async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CONTACT_PHONE
 
     context.user_data["lead"]["phone"] = txt
+    lead = context.user_data["lead"]
+
+    # Если вопрос уже предзаполнен (из разделов) — пропускаем этап "какой у вас вопрос?"
+    if "question" in lead and lead["question"]:
+        kb = ReplyKeyboardMarkup(
+            [
+                ["Утром", "Днём"],
+                ["Вечером", "Не принципиально"],
+                [t("btn_back", lang), t("btn_cancel", lang)],
+            ],
+            resize_keyboard=True,
+        )
+        await update.message.reply_text(t("time_ask", lang), reply_markup=kb)
+        return CONTACT_TIME
 
     await update.message.reply_text(
         t("question_ask", lang),
@@ -757,7 +846,218 @@ async def faq_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------------------------------------------------------------------
-# FAQ — ВРАЧИ
+# РАЗДЕЛ "Я ВРАЧ" — INLINE-МЕНЮ
+# ---------------------------------------------------------------------
+
+DOC_MAIN = "doc_main"
+DOC_WHO = "doc_who"
+DOC_EXPLAIN = "doc_explain"
+DOC_VOLUME = "doc_volume"
+DOC_IF_BOTH = "doc_if_both"
+DOC_USE = "doc_use"
+DOC_COOP = "doc_coop"
+DOC_FAQ_MENU = "doc_faq_menu"
+DOC_BACK_MAIN = "doc_back_main"
+
+DOCTOR_TEXT_INTRO = (
+    "Этот раздел — для коллег: врачей-генетиков, репродуктологов, акушеров-гинекологов и тех, кто ведёт пары "
+    "на этапе планирования беременности или программ ВРТ/ЭКО.\n\n"
+    "Речь про скрининг на носительство наследственных заболеваний: когда направлять, как объяснять пациентам "
+    "и как использовать результаты в реальной практике.\n\n"
+    "Кратко, по делу — так, чтобы можно было опираться в работе."
+)
+
+DOCTOR_TEXT_WHO = (
+    "**Кого стоит рассматривать в первую очередь:**\n\n"
+    "• пары на этапе прегравидарной подготовки и перед программами ВРТ/ЭКО;\n"
+    "• семьи с уже имеющимся ребёнком с наследственным заболеванием;\n"
+    "• пары с отягощённым семейным анамнезом (ранняя детская смертность, невынашивание, тяжёлые НЗ в роду);\n"
+    "• близкородственные браки — отдельная группа риска;\n"
+    "• пациенты из популяций с повышенной частотой отдельных заболеваний.\n\n"
+    "По сути — любая пара, которая задумывается о беременности и готова к ответственному, информированному решению."
+)
+
+DOCTOR_TEXT_EXPLAIN = (
+    "Рабочая формулировка, которую пациенты обычно хорошо понимают:\n\n"
+    "«Мы не ищем болезнь у вас. Мы смотрим, не являетесь ли вы с партнёром носителями одних и тех же "
+    "генетических вариантов, которые могут передаться ребёнку».\n\n"
+    "Важно подчеркнуть:\n\n"
+    "• носительство — **не диагноз**, не «метка» на пациента;\n"
+    "• это инструмент стратификации риска и грамотного планирования беременности;\n"
+    "• цель — не “найти проблему”, а заранее понимать, какие варианты есть у пары.\n\n"
+    "Отдельно стоит проговорить страхи:\n\n"
+    "«Если что-то найдут — с этим сегодня умеют работать. Ваша задача — знать, а не жить в режиме “авось”»."
+)
+
+DOCTOR_TEXT_VOLUME = (
+    "Универсального ответа «один тест на всех» нет, но есть рабочая логика выбора объёма:\n\n"
+    "• **Базовые панели** — частые тяжёлые аутосомно-рецессивные НЗ, X-сцепленные формы.\n"
+    "Подходят большинству пар на этапе планирования, в т.ч. перед ВРТ.\n\n"
+    "• **Расширенные панели / WES-подходы** — когда:\n"
+    "  — анамнез отягощён;\n"
+    "  — есть указания на возможные редкие НЗ;\n"
+    "  — пара осознанно готова к более широкому объёму данных.\n\n"
+    "• **Точечное тестирование** — если в семье уже известна конкретная мутация/вариант. "
+    "В этом случае логично начинать именно с неё.\n\n"
+    "Практически: сначала определяем клинический контекст и готовность пары к объёму информации, "
+    "а уже под это подбираем панель/подход."
+)
+
+DOCTOR_TEXT_IF_BOTH = (
+    "При совпадении носительства у обоих партнёров задача врача — не «напугать», а корректно обозначить риск "
+    "и варианты действий.\n\n"
+    "Что обычно обсуждается с парой:\n\n"
+    "• ЭКО с преимплантационной генетической диагностикой (ПГТ-М);\n"
+    "• использование донорского материала (ооциты / сперма, в зависимости от ситуации);\n"
+    "• естественная беременность с пониманием риска и возможностью пренатальной диагностики;\n"
+    "• осознанный выбор пары при полном информировании о вероятностях.\n\n"
+    "**Обязательный элемент — консультация врача-генетика.** Желательны:\n\n"
+    "• дотестовая консультация — цели, ограничения исследования, варианты действий при разных сценариях;\n"
+    "• послетестовая консультация — интерпретация результата, расчёт рисков, разбор тактики с учётом ценностей "
+    "и планов семьи.\n\n"
+    "Врач, ведущий пару, не обязан брать на себя всю глубину интерпретации — важно, чтобы пациенты были в связке "
+    "с генетиком."
+)
+
+DOCTOR_TEXT_USE = (
+    "На что стоит опираться в реальной практике:\n\n"
+    "• фиксировать в карте факт проведённого скрининга, объём и ключевые выводы;\n"
+    "• при выявлении клинически значимых вариантов — документировать, что пациент(ы) информированы о риске и "
+    "вариантах действий;\n"
+    "• не перегружать заключение техническими деталями, оставляя их в отчёте/приложении;\n"
+    "• при неопределённых вариантах (VUS) — не делать дальнобойных выводов, а направлять к врачу-генетику.\n\n"
+    "В разговоре с пациентами хорошо работает формулировка:\n\n"
+    "«У нас есть результат, который показывает уровень генетического риска. Дальше мы обсуждаем, какие есть "
+    "варианты и какой путь оптимален именно для вас».\n\n"
+    "Это снижает тревогу и ощущение “приговора”, а не превращает результат в конечную точку."
+)
+
+DOCTOR_TEXT_COOP = (
+    "Если вам удобно не просто направлять пациентов, но и видеть «обратную сторону» — что в итоге получилось "
+    "по вашим направлениям, можно работать через систему персональных промокодов.\n\n"
+    "• каждому врачу выдаётся уникальный промокод;\n"
+    "• пациенты по этому коду получают скидку на исследование;\n"
+    "• вы видите агрегированные кейсы по своим пациентам (по промокоду) и можете использовать это в практике "
+    "и отчётности;\n"
+    "• все орг.вопросы прозрачны, без «серых» схем.\n\n"
+    "Если такой формат вам подходит — можно начать с методических материалов и нескольких пилотных пациентов."
+)
+
+
+def build_doctor_main_keyboard() -> InlineKeyboardMarkup:
+    keyboard = [
+        [InlineKeyboardButton("Кого и когда направлять?", callback_data=DOC_WHO)],
+        [InlineKeyboardButton("Как объяснить пациенту?", callback_data=DOC_EXPLAIN)],
+        [InlineKeyboardButton("Какой объём исследований выбрать?", callback_data=DOC_VOLUME)],
+        [InlineKeyboardButton("Если оба носители — как вести пару?", callback_data=DOC_IF_BOTH)],
+        [InlineKeyboardButton("Как использовать результаты в практике?", callback_data=DOC_USE)],
+        [InlineKeyboardButton("FAQ для врачей", callback_data=DOC_FAQ_MENU)],
+        [InlineKeyboardButton("Сотрудничество и промокоды", callback_data=DOC_COOP)],
+        [InlineKeyboardButton("Получить методический лист", callback_data="contact_from_doctor")],
+        [InlineKeyboardButton("🔙 В главное меню", callback_data=DOC_BACK_MAIN)],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def doctor_menu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Старт раздела 'Я врач' по нажатию кнопки в главном меню."""
+    msg = update.message
+    if msg:
+        lang = get_lang(update)
+        # убираем нижнюю клавиатуру (погружённый режим)
+        await msg.reply_text(" ", reply_markup=ReplyKeyboardRemove())
+        await msg.reply_text(
+            DOCTOR_TEXT_INTRO,
+            reply_markup=build_doctor_main_keyboard(),
+            parse_mode="Markdown",
+        )
+
+
+async def doctor_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка всех callback'ов раздела 'Я врач'."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data == DOC_BACK_MAIN:
+        return await show_main_menu(update, context)
+
+    if data == DOC_FAQ_MENU:
+        # переходим в уже существующий FAQ для врачей
+        return await doctor_faq_menu_entry(update, context)
+
+    if data == DOC_MAIN:
+        text = DOCTOR_TEXT_INTRO
+        keyboard = build_doctor_main_keyboard()
+        parse_mode = "Markdown"
+    elif data == DOC_WHO:
+        text = DOCTOR_TEXT_WHO
+        keyboard = InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("Как объяснить пациенту?", callback_data=DOC_EXPLAIN)],
+                [InlineKeyboardButton("⬅️ К списку вопросов", callback_data=DOC_MAIN)],
+            ]
+        )
+        parse_mode = "Markdown"
+    elif data == DOC_EXPLAIN:
+        text = DOCTOR_TEXT_EXPLAIN
+        keyboard = InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("Какой объём исследований выбрать?", callback_data=DOC_VOLUME)],
+                [InlineKeyboardButton("⬅️ К списку вопросов", callback_data=DOC_MAIN)],
+            ]
+        )
+        parse_mode = "Markdown"
+    elif data == DOC_VOLUME:
+        text = DOCTOR_TEXT_VOLUME
+        keyboard = InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("Если оба носители — как вести пару?", callback_data=DOC_IF_BOTH)],
+                [InlineKeyboardButton("⬅️ К списку вопросов", callback_data=DOC_MAIN)],
+            ]
+        )
+        parse_mode = "Markdown"
+    elif data == DOC_IF_BOTH:
+        text = DOCTOR_TEXT_IF_BOTH
+        keyboard = InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("Как использовать результаты в практике?", callback_data=DOC_USE)],
+                [InlineKeyboardButton("⬅️ К списку вопросов", callback_data=DOC_MAIN)],
+            ]
+        )
+        parse_mode = "Markdown"
+    elif data == DOC_USE:
+        text = DOCTOR_TEXT_USE
+        keyboard = InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("Сотрудничество и промокоды", callback_data=DOC_COOP)],
+                [InlineKeyboardButton("⬅️ К списку вопросов", callback_data=DOC_MAIN)],
+            ]
+        )
+        parse_mode = "Markdown"
+    elif data == DOC_COOP:
+        text = DOCTOR_TEXT_COOP
+        keyboard = InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("Получить методический лист", callback_data="contact_from_doctor")],
+                [InlineKeyboardButton("⬅️ К списку вопросов", callback_data=DOC_MAIN)],
+            ]
+        )
+        parse_mode = "Markdown"
+    else:
+        text = DOCTOR_TEXT_INTRO
+        keyboard = build_doctor_main_keyboard()
+        parse_mode = "Markdown"
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=keyboard,
+        parse_mode=parse_mode,
+    )
+
+
+# ---------------------------------------------------------------------
+# FAQ — ВРАЧИ (КАК БЫЛО)
 # ---------------------------------------------------------------------
 
 DOCTOR_FAQ_LIST: List[Dict[str, str]] = [
@@ -890,10 +1190,14 @@ def main():
     pattern = rf"^{escape(t('btn_contact', 'ru'))}$|^{escape(t('btn_contact', 'en'))}$"
 
     contact_conv = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(pattern), contact_start)],
+        entry_points=[
+            MessageHandler(filters.Regex(pattern), contact_start),
+            CallbackQueryHandler(contact_start_from_plan, pattern=r"^contact_from_plan$"),
+            CallbackQueryHandler(contact_start_from_doctor, pattern=r"^contact_from_doctor$"),
+        ],
         states={
             CONTACT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_name)],
-            CONTACT_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_phone)],
+            CONTACT_PHONE: [MessageHandler(filters.ALL & ~filters.COMMAND, contact_phone)],
             CONTACT_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_question)],
             CONTACT_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_time)],
             CONTACT_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_method)],
@@ -911,6 +1215,9 @@ def main():
 
     # callbacks раздела "Планируем / ждём ребёнка"
     app.add_handler(CallbackQueryHandler(plan_callback, pattern=r"^plan_"))
+
+    # callbacks раздела "Я врач"
+    app.add_handler(CallbackQueryHandler(doctor_menu_callback, pattern=r"^doc_"))
 
     # FAQ callbacks
     app.add_handler(CallbackQueryHandler(faq_answer, pattern=r"^faq_"))
