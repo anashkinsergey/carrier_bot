@@ -9,7 +9,6 @@ from telegram import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     KeyboardButton,
-    ReplyKeyboardRemove,
 )
 from telegram.ext import (
     Application,
@@ -233,25 +232,24 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
-    text = update.message.text.strip()
+    text = (update.message.text or "").strip()
 
     if text == t("btn_plan", lang):
         return await plan_start(update, context)
 
-    elif text == t("btn_doctor", lang):
+    if text == t("btn_doctor", lang):
         return await doctor_menu_start(update, context)
 
-    elif text == t("btn_contact", lang):
+    if text == t("btn_contact", lang):
         return await contact_start(update, context)
 
-    elif text == t("btn_faq", lang):
-        await faq_menu_entry(update, context)
+    if text == t("btn_faq", lang):
+        return await faq_menu_entry(update, context)
 
-    else:
-        await update.message.reply_text(
-            t("unknown_command", lang),
-            reply_markup=main_menu_keyboard(lang),
-        )
+    await update.message.reply_text(
+        t("unknown_command", lang),
+        reply_markup=main_menu_keyboard(lang),
+    )
 
 
 # ---------------------------------------------------------------------
@@ -344,8 +342,6 @@ async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     """Старт раздела «Планируем / ждём ребёнка» по нажатию кнопки в главном меню."""
     msg = update.message
     if msg:
-        # убираем нижнюю клавиатуру (погружённый режим)
-        await msg.reply_text(" ", reply_markup=ReplyKeyboardRemove())
         await msg.reply_text(
             PLAN_TEXT_INTRO,
             reply_markup=build_plan_main_keyboard(),
@@ -359,7 +355,6 @@ async def plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     data = query.data
 
     if data == PLAN_BACK_MAIN:
-        # выходим в главное меню и возвращаем клавиатуру
         return await show_main_menu(update, context)
 
     if data == PLAN_MENU:
@@ -406,7 +401,6 @@ async def plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             ]
         )
     else:
-        # на всякий случай показываем главное внутри раздела
         text = PLAN_TEXT_INTRO
         keyboard = build_plan_main_keyboard()
 
@@ -515,7 +509,6 @@ async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data["lang"]
 
-    # Если пользователь нажал кнопку "Отправить мой номер"
     if update.message.contact:
         phone_raw = update.message.contact.phone_number
         txt = phone_raw.strip()
@@ -538,7 +531,6 @@ async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["lead"]["phone"] = txt
     lead = context.user_data["lead"]
 
-    # Если вопрос уже предзаполнен (из разделов) — пропускаем этап "какой у вас вопрос?"
     if "question" in lead and lead["question"]:
         kb = ReplyKeyboardMarkup(
             [
@@ -963,9 +955,6 @@ async def doctor_menu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Старт раздела 'Я врач' по нажатию кнопки в главном меню."""
     msg = update.message
     if msg:
-        lang = get_lang(update)
-        # убираем нижнюю клавиатуру (погружённый режим)
-        await msg.reply_text(" ", reply_markup=ReplyKeyboardRemove())
         await msg.reply_text(
             DOCTOR_TEXT_INTRO,
             reply_markup=build_doctor_main_keyboard(),
@@ -983,7 +972,6 @@ async def doctor_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return await show_main_menu(update, context)
 
     if data == DOC_FAQ_MENU:
-        # переходим в уже существующий FAQ для врачей
         return await doctor_faq_menu_entry(update, context)
 
     if data == DOC_MAIN:
@@ -1057,7 +1045,7 @@ async def doctor_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 # ---------------------------------------------------------------------
-# FAQ — ВРАЧИ (КАК БЫЛО)
+# FAQ — ВРАЧИ (СТАРЫЙ БЛОК, ИСПОЛЬЗУЕТСЯ КАК ДОПОЛНИТЕЛЬНЫЙ)
 # ---------------------------------------------------------------------
 
 DOCTOR_FAQ_LIST: List[Dict[str, str]] = [
@@ -1210,16 +1198,12 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(contact_conv)
 
-    # текстовые сообщения главного меню
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu))
 
-    # callbacks раздела "Планируем / ждём ребёнка"
     app.add_handler(CallbackQueryHandler(plan_callback, pattern=r"^plan_"))
 
-    # callbacks раздела "Я врач"
     app.add_handler(CallbackQueryHandler(doctor_menu_callback, pattern=r"^doc_"))
 
-    # FAQ callbacks
     app.add_handler(CallbackQueryHandler(faq_answer, pattern=r"^faq_"))
     app.add_handler(CallbackQueryHandler(doctor_faq_answer, pattern=r"^dfaq_"))
 
