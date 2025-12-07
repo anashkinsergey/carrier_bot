@@ -38,7 +38,6 @@ logger.info("🚀 Bot started: carrier_screening_bot")
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 OWNER_CHAT_ID = int(os.environ.get("OWNER_CHAT_ID", "0"))
-CHANNEL_USERNAME = "@carrier_screening"  # канал для поста с квизом
 
 (
     CONTACT_NAME,
@@ -79,6 +78,7 @@ def t(label: str, lang: str = "ru") -> str:
         "btn_faq": {"ru": "❓ FAQ", "en": "❓ FAQ"},
         "btn_back": {"ru": "⬅️ Назад", "en": "⬅️ Back"},
         "btn_cancel": {"ru": "❌ Отмена", "en": "❌ Cancel"},
+        "btn_ask_here": {"ru": "💬 Написать вопрос здесь", "en": "💬 Ask a question here"},
 
         "name_ask": {
             "ru": "Как к вам обращаться? (имя или имя + фамилия)",
@@ -340,7 +340,6 @@ PLAN_TEXT_HOW = (
 
 
 async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Старт раздела «Планируем / ждём ребёнка» по нажатию кнопки в главном меню."""
     msg = update.message
     if msg:
         await msg.reply_text(
@@ -350,7 +349,6 @@ async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработка всех callback'ов раздела планирования."""
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -413,7 +411,6 @@ async def plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 # ---------------------------------------------------------------------
 
 async def contact_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Старт контакта при нажатии на кнопку в главном меню."""
     lang = get_lang(update)
     context.user_data["lang"] = lang
     context.user_data["lead"] = {}
@@ -434,7 +431,6 @@ async def contact_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def contact_start_from_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Старт контакта из раздела 'Планируем / ждём ребёнка' с автозаполненным вопросом."""
     lang = get_lang(update)
     context.user_data["lang"] = lang
     context.user_data["lead"] = {"question": "Хочу подобрать тест"}
@@ -458,7 +454,6 @@ async def contact_start_from_plan(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def contact_start_from_doctor(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Старт контакта из раздела 'Я врач' с автозаполненным вопросом."""
     lang = get_lang(update)
     context.user_data["lang"] = lang
     context.user_data["lead"] = {
@@ -483,6 +478,8 @@ async def contact_start_from_doctor(update: Update, context: ContextTypes.DEFAUL
     return CONTACT_NAME
 
 
+# >>> ОБНОВЛЁННАЯ ФУНКЦИЯ contact_name <<<
+
 async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data["lang"]
     txt = update.message.text.strip()
@@ -490,22 +487,29 @@ async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_cancel(txt, lang):
         return await cancel_contact(update)
 
+    # сохраняем имя
     context.user_data["lead"]["name"] = txt
+
+    intro = (
+        f"Отлично, {txt}! 🙌\n\n"
+        "Чтобы я мог подсказать именно под вашу ситуацию — "
+        "выберите, как удобнее продолжить:"
+    )
 
     kb = ReplyKeyboardMarkup(
         [
             [KeyboardButton("📱 Отправить мой номер", request_contact=True)],
+            [t("btn_ask_here", lang)],
             [t("btn_back", lang), t("btn_cancel", lang)],
         ],
         resize_keyboard=True,
     )
 
-    await update.message.reply_text(
-        t("phone_ask", lang),
-        reply_markup=kb,
-    )
+    await update.message.reply_text(intro, reply_markup=kb)
     return CONTACT_PHONE
 
+
+# >>> ОБНОВЛЁННАЯ ФУНКЦИЯ contact_phone <<<
 
 async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data["lang"]
@@ -519,17 +523,41 @@ async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_cancel(txt, lang):
             return await cancel_contact(update)
         if is_back(txt, lang):
-            return await contact_start(update, context)
+            # возврат к шагу с именем
+            await update.message.reply_text(
+                t("name_ask", lang),
+                reply_markup=ReplyKeyboardMarkup(
+                    [
+                        [KeyboardButton("📱 Отправить мой номер", request_contact=True)],
+                        [t("btn_cancel", lang)],
+                    ],
+                    resize_keyboard=True,
+                ),
+            )
+            return CONTACT_NAME
 
-    if not is_valid_phone(txt):
-        await update.message.reply_text(
-            t("phone_invalid", lang),
-            parse_mode="Markdown",
-            reply_markup=back_cancel_keyboard(lang),
-        )
-        return CONTACT_PHONE
+        # новый путь: человек не хочет давать номер, выбирает "Написать вопрос здесь"
+        if txt == t("btn_ask_here", lang):
+            await update.message.reply_text(
+                t("question_ask", lang),
+                reply_markup=back_cancel_keyboard(lang),
+            )
+            return CONTACT_QUESTION
 
-    context.user_data["lead"]["phone"] = txt
+    # сюда попадаем, если у нас всё-таки есть номер
+    if not update.message.contact and txt and txt != t("btn_ask_here", lang):
+        if not is_valid_phone(txt):
+            await update.message.reply_text(
+                t("phone_invalid", lang),
+                parse_mode="Markdown",
+                reply_markup=back_cancel_keyboard(lang),
+            )
+            return CONTACT_PHONE
+
+    # если номер валидный или пришёл через contact
+    if update.message.contact or is_valid_phone(txt):
+        context.user_data["lead"]["phone"] = txt
+
     lead = context.user_data["lead"]
 
     if "question" in lead and lead["question"]:
@@ -615,13 +643,18 @@ async def contact_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data["lang"]
     lead = context.user_data["lead"]
 
+    phone = lead.get("phone", "не указан")
+    question = lead.get("question", "не указан")
+    time_val = lead.get("time", "не указано")
+    method = lead.get("method", "не указан")
+
     lines = [
         t("contact_summary", lang),
-        f"{t('summary_name', lang)}: {lead['name']}",
-        f"{t('summary_phone', lang)}: {lead['phone']}",
-        f"{t('summary_question', lang)}: {lead['question']}",
-        f"{t('summary_time', lang)}: {lead['time']}",
-        f"{t('summary_method', lang)}: {lead['method']}",
+        f"{t('summary_name', lang)}: {lead.get('name', '—')}",
+        f"{t('summary_phone', lang)}: {phone}",
+        f"{t('summary_question', lang)}: {question}",
+        f"{t('summary_time', lang)}: {time_val}",
+        f"{t('summary_method', lang)}: {method}",
         "",
         t("confirm_ask", lang),
     ]
@@ -672,14 +705,19 @@ async def send_lead(update: Update, lang: str, lead: Dict[str, Any]):
         return
 
     user = update.effective_user
+    phone = lead.get("phone", "не указан")
+    question = lead.get("question", "не указан")
+    time_val = lead.get("time", "не указано")
+    method = lead.get("method", "не указан")
+
     lines = [
         t("lead_sent_owner_title", lang),
         "",
-        f"{t('summary_name', lang)}: {lead['name']}",
-        f"{t('summary_phone', lang)}: {lead['phone']}",
-        f"{t('summary_question', lang)}: {lead['question']}",
-        f"{t('summary_time', lang)}: {lead['time']}",
-        f"{t('summary_method', lang)}: {lead['method']}",
+        f"{t('summary_name', lang)}: {lead.get('name', '—')}",
+        f"{t('summary_phone', lang)}: {phone}",
+        f"{t('summary_question', lang)}: {question}",
+        f"{t('summary_time', lang)}: {time_val}",
+        f"{t('summary_method', lang)}: {method}",
         "",
         f"User ID: {user.id}",
         f"Username: @{user.username}" if user.username else "Username: —",
@@ -953,7 +991,6 @@ def build_doctor_main_keyboard() -> InlineKeyboardMarkup:
 
 
 async def doctor_menu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Старт раздела 'Я врач' по нажатию кнопки в главном меню."""
     msg = update.message
     if msg:
         await msg.reply_text(
@@ -964,7 +1001,6 @@ async def doctor_menu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def doctor_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка всех callback'ов раздела 'Я врач'."""
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -1166,44 +1202,6 @@ async def doctor_faq_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------------------------------------------------------------------
-# ПОСТ С КВИЗОМ В КАНАЛ
-# ---------------------------------------------------------------------
-
-async def send_quiz_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Служебная команда: отправить пост с кнопкой 'Пройти квиз' в канал."""
-
-    user = update.effective_user
-    if OWNER_CHAT_ID and user and user.id != OWNER_CHAT_ID:
-        # Ограничиваем команду только владельцем
-        await update.message.reply_text("Эта команда только для владельца бота.")
-        return
-
-    text = (
-        "Начните с квиза — он лёгкий, понятный и даёт результат сразу.\n\n"
-        "1 минута — и вы увидите результат без сложных терминов."
-    )
-
-    keyboard = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    text="Пройти квиз",
-                    url="https://mutant-li.ru/quiz/start/",
-                )
-            ]
-        ]
-    )
-
-    await context.bot.send_message(
-        chat_id=CHANNEL_USERNAME,
-        text=text,
-        reply_markup=keyboard,
-    )
-
-    await update.message.reply_text("Пост с кнопкой отправлен в @carrier_screening.")
-
-
-# ---------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------
 
@@ -1229,13 +1227,12 @@ def main():
             CONTACT_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_time)],
             CONTACT_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_method)],
             CONTACT_CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_confirm)],
-        },
+        ],
         fallbacks=[],
         allow_reentry=True,
     )
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("post_quiz", send_quiz_post))
     app.add_handler(contact_conv)
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu))
