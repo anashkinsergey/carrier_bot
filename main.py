@@ -41,7 +41,7 @@ OWNER_CHAT_ID = int(os.environ.get("OWNER_CHAT_ID", "0"))
 
 (
     CONTACT_NAME,
-    CONTACT_CONTACT_CHOICE,   # новый этап: выбор варианта контакта
+    CONTACT_CONTACT_CHOICE,   # выбор: номер / username / другой контакт
     CONTACT_PHONE,
     CONTACT_QUESTION,
     CONTACT_TIME,
@@ -120,8 +120,15 @@ def t(label: str, lang: str = "ru") -> str:
         "method_ask": {"ru": "Как удобнее связаться?", "en": "Preferred contact method:"},
 
         "contact_canceled": {
-            "ru": "Заявка отменена. Чтобы начать снова — нажмите «Записаться / Оставить контакты».",
-            "en": "Request cancelled. To try again, press “Leave contacts / book a call”.",
+            "ru": (
+                "Заявка отменена.\n\n"
+                "Если пока не хотите оставлять контакты — можете просто написать ваш вопрос здесь, в боте, "
+                "а я передам его врачу."
+            ),
+            "en": (
+                "Request cancelled.\n\n"
+                "If you don’t want to leave contacts now, you can just write your question here in the bot."
+            ),
         },
 
         "contact_summary": {"ru": "Проверьте данные:\n", "en": "Please check your data:\n"},
@@ -146,6 +153,19 @@ def t(label: str, lang: str = "ru") -> str:
         },
 
         "lead_sent_owner_title": {"ru": "📬 Новая заявка", "en": "📬 New Lead"},
+
+        "free_q_user": {
+            "ru": (
+                "Я передал ваше сообщение.\n\n"
+                "Можно продолжать писать здесь, в боте — я буду отвечать через это же окно."
+            ),
+            "en": "I’ve forwarded your message. You can keep chatting here in the bot.",
+        },
+        "free_q_owner_title": {
+            "ru": "💬 Новое сообщение в боте (без заявки)",
+            "en": "💬 New bot message (no lead form)",
+        },
+
         "unknown_command": {
             "ru": "Пока не знаю, что делать с этим. Используйте меню ниже.",
             "en": "I don’t know what to do with that. Use the menu below.",
@@ -166,7 +186,12 @@ def t(label: str, lang: str = "ru") -> str:
             "en": "For doctors: when to refer, how to explain screening and how to use the results.\n",
         },
     }
-    return texts.get(label, {}).get(lang, texts.get(label, {}).get("ru", label))
+    d = texts.get(label, {})
+    if lang in d:
+        return d[lang]
+    if "ru" in d:
+        return d["ru"]
+    return label
 
 
 # ---------------------------------------------------------------------
@@ -231,10 +256,36 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_text(t("main_menu_title", lang), reply_markup=main_menu_keyboard(lang))
 
 
+async def forward_free_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Переслать свободный текст пользователя владельцу, если не нажаты кнопки меню."""
+    if not OWNER_CHAT_ID:
+        return
+
+    user = update.effective_user
+    lang = get_lang(update)
+    text = update.message.text
+
+    lines = [
+        t("free_q_owner_title", lang),
+        "",
+        f"User ID: {user.id}",
+        f"Username: @{user.username}" if user.username else "Username: —",
+        f"Имя: {user.full_name}",
+        "",
+        "Сообщение:",
+        text,
+    ]
+    try:
+        await context.bot.send_message(chat_id=OWNER_CHAT_ID, text="\n".join(lines))
+    except Exception as e:
+        logger.error("Error forwarding free message: %s", e)
+
+
 async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
     text = (update.message.text or "").strip()
 
+    # Кнопки главного меню
     if text == t("btn_plan", lang):
         return await plan_start(update, context)
 
@@ -247,8 +298,10 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == t("btn_faq", lang):
         return await faq_menu_entry(update, context)
 
+    # Не кнопка — считаем это сообщением/вопросом и пересылаем владельцу
+    await forward_free_message(update, context)
     await update.message.reply_text(
-        t("unknown_command", lang),
+        t("free_q_user", lang),
         reply_markup=main_menu_keyboard(lang),
     )
 
@@ -340,7 +393,6 @@ PLAN_TEXT_HOW = (
 
 
 async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Старт раздела «Планируем / ждём ребёнка» по нажатию кнопки в главном меню."""
     msg = update.message
     if msg:
         await msg.reply_text(
@@ -350,7 +402,6 @@ async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработка всех callback'ов раздела планирования."""
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -413,7 +464,6 @@ async def plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 # ---------------------------------------------------------------------
 
 async def contact_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Старт контакта при нажатии на кнопку в главном меню."""
     lang = get_lang(update)
     context.user_data["lang"] = lang
     context.user_data["lead"] = {}
@@ -431,7 +481,6 @@ async def contact_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def contact_start_from_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Старт контакта из раздела 'Планируем / ждём ребёнка' с автозаполненным вопросом."""
     lang = get_lang(update)
     context.user_data["lang"] = lang
     context.user_data["lead"] = {"question": "Хочу подобрать тест"}
@@ -452,7 +501,6 @@ async def contact_start_from_plan(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def contact_start_from_doctor(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Старт контакта из раздела 'Я врач' с автозаполненным вопросом."""
     lang = get_lang(update)
     context.user_data["lang"] = lang
     context.user_data["lead"] = {
@@ -539,7 +587,7 @@ async def contact_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return CONTACT_PHONE
 
-    # 4) Пользователь просто ввёл номер вручную вместо кнопки
+    # 4) Пользователь вручную ввёл номер вместо кнопки
     elif is_valid_phone(txt):
         lead["phone"] = txt
 
@@ -578,7 +626,6 @@ async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await cancel_contact(update)
 
     if is_back(txt, lang):
-        # Вернём клавиатуру выбора контакта
         kb = ReplyKeyboardMarkup(
             [
                 [KeyboardButton("📱 Отправить мой номер", request_contact=True)],
@@ -622,7 +669,6 @@ async def contact_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_cancel(txt, lang):
         return await cancel_contact(update)
     if is_back(txt, lang):
-        # назад — к выбору варианта контакта
         return CONTACT_CONTACT_CHOICE
 
     context.user_data["lead"]["question"] = txt
@@ -706,7 +752,7 @@ async def contact_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cancel_contact(update: Update):
     lang = get_lang(update)
-    await update.message.reply_text(t("contact_canceled", lang), reply_markup=None)
+    await update.message.reply_text(t("contact_canceled", lang), reply_markup=main_menu_keyboard(lang))
     return ConversationHandler.END
 
 
@@ -1018,7 +1064,6 @@ def build_doctor_main_keyboard() -> InlineKeyboardMarkup:
 
 
 async def doctor_menu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Старт раздела 'Я врач' по нажатию кнопки в главном меню."""
     msg = update.message
     if msg:
         await msg.reply_text(
@@ -1029,7 +1074,6 @@ async def doctor_menu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def doctor_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка всех callback'ов раздела 'Я врач'."""
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -1295,14 +1339,13 @@ def main():
 
     app.add_handler(contact_conv)
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu))
-
     app.add_handler(CallbackQueryHandler(plan_callback, pattern=r"^plan_"))
-
     app.add_handler(CallbackQueryHandler(doctor_menu_callback, pattern=r"^doc_"))
-
     app.add_handler(CallbackQueryHandler(faq_answer, pattern=r"^faq_"))
     app.add_handler(CallbackQueryHandler(doctor_faq_answer, pattern=r"^dfaq_"))
+
+    # Любой текст вне сценариев = диалог через бота
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu))
 
     app.run_polling()
 
