@@ -78,7 +78,10 @@ def t(label: str, lang: str = "ru") -> str:
         "btn_faq": {"ru": "❓ FAQ", "en": "❓ FAQ"},
         "btn_back": {"ru": "⬅️ Назад", "en": "⬅️ Back"},
         "btn_cancel": {"ru": "❌ Отмена", "en": "❌ Cancel"},
-        "btn_ask_here": {"ru": "💬 Написать вопрос здесь", "en": "💬 Ask a question here"},
+        "btn_ask_here": {
+            "ru": "💬 Написать вопрос здесь",
+            "en": "💬 Ask a question here",
+        },
 
         "name_ask": {
             "ru": "Как к вам обращаться? (имя или имя + фамилия)",
@@ -478,8 +481,6 @@ async def contact_start_from_doctor(update: Update, context: ContextTypes.DEFAUL
     return CONTACT_NAME
 
 
-# >>> ОБНОВЛЁННАЯ ФУНКЦИЯ contact_name <<<
-
 async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data["lang"]
     txt = update.message.text.strip()
@@ -509,8 +510,6 @@ async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return CONTACT_PHONE
 
 
-# >>> ОБНОВЛЁННАЯ ФУНКЦИЯ contact_phone <<<
-
 async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data["lang"]
 
@@ -523,7 +522,7 @@ async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_cancel(txt, lang):
             return await cancel_contact(update)
         if is_back(txt, lang):
-            # возврат к шагу с именем
+            # возврат к шагу с вводом имени
             await update.message.reply_text(
                 t("name_ask", lang),
                 reply_markup=ReplyKeyboardMarkup(
@@ -1227,7 +1226,7 @@ def main():
             CONTACT_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_time)],
             CONTACT_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_method)],
             CONTACT_CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_confirm)],
-        ],
+        },
         fallbacks=[],
         allow_reentry=True,
     )
