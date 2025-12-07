@@ -76,6 +76,7 @@ def t(label: str, lang: str = "ru") -> str:
         "btn_plan": {"ru": "👶 Планируем / ждём ребёнка", "en": "👶 Planning / expecting a baby"},
         "btn_doctor": {"ru": "👨‍⚕️ Я врач", "en": "👨‍⚕️ I am a doctor"},
         "btn_contact": {"ru": "📝 Записаться / Оставить контакты", "en": "📝 Leave contacts / book a call"},
+        "btn_free_question": {"ru": "/Написать свой вопрос", "en": "Write my question"},
         "btn_faq": {"ru": "❓ FAQ", "en": "❓ FAQ"},
         "btn_back": {"ru": "⬅️ Назад", "en": "⬅️ Back"},
         "btn_cancel": {"ru": "❌ Отмена", "en": "❌ Cancel"},
@@ -154,10 +155,17 @@ def t(label: str, lang: str = "ru") -> str:
 
         "lead_sent_owner_title": {"ru": "📬 Новая заявка", "en": "📬 New Lead"},
 
+        "free_q_button_explain": {
+            "ru": (
+                "Можете просто написать здесь свой вопрос в одном или нескольких сообщениях.\n\n"
+                "Это можно сделать *без телефона и других контактов* — я всё равно передам ваши сообщения врачу."
+            ),
+            "en": "You can just type your question here in one or more messages – without leaving contacts.",
+        },
         "free_q_user": {
             "ru": (
                 "Я передал ваше сообщение.\n\n"
-                "Можно продолжать писать здесь, в боте — я буду отвечать через это же окно."
+                "Можно продолжать писать здесь, в боте — ответы будут приходить в этот же чат."
             ),
             "en": "I’ve forwarded your message. You can keep chatting here in the bot.",
         },
@@ -203,7 +211,7 @@ def main_menu_keyboard(lang: str) -> ReplyKeyboardMarkup:
         [
             [t("btn_plan", lang)],
             [t("btn_doctor", lang)],
-            [t("btn_contact", lang)],
+            [t("btn_contact", lang), t("btn_free_question", lang)],
             [t("btn_faq", lang)],
         ],
         resize_keyboard=True,
@@ -226,11 +234,6 @@ def is_cancel(txt: str, lang: str) -> bool:
 
 
 def is_valid_phone(phone: str) -> bool:
-    """
-    Простая, но более строгая проверка:
-    - номер должен начинаться с '+'
-    - далее 10–15 цифр (E.164-подобный формат)
-    """
     cleaned = re.sub(r"[^\d+]", "", phone).strip()
     if not cleaned.startswith("+"):
         return False
@@ -239,7 +242,7 @@ def is_valid_phone(phone: str) -> bool:
 
 
 # ---------------------------------------------------------------------
-# ГЛАВНОЕ МЕНЮ
+# ГЛАВНОЕ МЕНЮ + СВОБОДНЫЙ ДИАЛОГ
 # ---------------------------------------------------------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -298,7 +301,15 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == t("btn_faq", lang):
         return await faq_menu_entry(update, context)
 
-    # Не кнопка — считаем это сообщением/вопросом и пересылаем владельцу
+    if text == t("btn_free_question", lang):
+        await update.message.reply_text(
+            t("free_q_button_explain", lang),
+            reply_markup=main_menu_keyboard(lang),
+        )
+        # дальше человек просто пишет текст — и он пойдёт в ветку ниже (диалог через бота)
+        return
+
+    # Не кнопка меню — считаем это вопросом / сообщением и пересылаем владельцу
     await forward_free_message(update, context)
     await update.message.reply_text(
         t("free_q_user", lang),
@@ -523,7 +534,6 @@ async def contact_start_from_doctor(update: Update, context: ContextTypes.DEFAUL
 
 
 async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Сохраняем имя и даём выбор: номер / username / другой контакт."""
     lang = context.user_data["lang"]
     txt = update.message.text.strip()
 
@@ -549,7 +559,6 @@ async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def contact_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка выбора: номер / username / другой контакт."""
     lang = context.user_data["lang"]
     msg = update.message
     txt = (msg.text or "").strip()
@@ -618,7 +627,6 @@ async def contact_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Этап, когда пользователь выбрал 'Написать другой контакт' и вводит его текстом."""
     lang = context.user_data["lang"]
     txt = update.message.text.strip()
 
@@ -1155,7 +1163,7 @@ async def doctor_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 # ---------------------------------------------------------------------
-# FAQ — ВРАЧИ (СТАРЫЙ БЛОК, ИСПОЛЬЗУЕТСЯ КАК ДОПОЛНИТЕЛЬНЫЙ)
+# FAQ — ВРАЧИ (СТАРЫЙ БЛОК, КАК ДОПОЛНИТЕЛЬНЫЙ)
 # ---------------------------------------------------------------------
 
 DOCTOR_FAQ_LIST: List[Dict[str, str]] = [
@@ -1329,7 +1337,7 @@ def main():
             CONTACT_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_time)],
             CONTACT_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_method)],
             CONTACT_CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_confirm)],
-        },
+        ],
         fallbacks=[],
         allow_reentry=True,
     )
