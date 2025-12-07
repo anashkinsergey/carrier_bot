@@ -38,6 +38,7 @@ logger.info("🚀 Bot started: carrier_screening_bot")
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 OWNER_CHAT_ID = int(os.environ.get("OWNER_CHAT_ID", "0"))
+CHANNEL_USERNAME = "@carrier_screening"  # канал для поста с квизом
 
 (
     CONTACT_NAME,
@@ -1165,6 +1166,44 @@ async def doctor_faq_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------------------------------------------------------------------
+# ПОСТ С КВИЗОМ В КАНАЛ
+# ---------------------------------------------------------------------
+
+async def send_quiz_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Служебная команда: отправить пост с кнопкой 'Пройти квиз' в канал."""
+
+    user = update.effective_user
+    if OWNER_CHAT_ID and user and user.id != OWNER_CHAT_ID:
+        # Ограничиваем команду только владельцем
+        await update.message.reply_text("Эта команда только для владельца бота.")
+        return
+
+    text = (
+        "Начните с квиза — он лёгкий, понятный и даёт результат сразу.\n\n"
+        "1 минута — и вы увидите результат без сложных терминов."
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    text="Пройти квиз",
+                    url="https://mutant-li.ru/quiz/start/",
+                )
+            ]
+        ]
+    )
+
+    await context.bot.send_message(
+        chat_id=CHANNEL_USERNAME,
+        text=text,
+        reply_markup=keyboard,
+    )
+
+    await update.message.reply_text("Пост с кнопкой отправлен в @carrier_screening.")
+
+
+# ---------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------
 
@@ -1196,6 +1235,7 @@ def main():
     )
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("post_quiz", send_quiz_post))
     app.add_handler(contact_conv)
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu))
