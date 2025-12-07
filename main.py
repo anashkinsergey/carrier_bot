@@ -78,10 +78,6 @@ def t(label: str, lang: str = "ru") -> str:
         "btn_faq": {"ru": "❓ FAQ", "en": "❓ FAQ"},
         "btn_back": {"ru": "⬅️ Назад", "en": "⬅️ Back"},
         "btn_cancel": {"ru": "❌ Отмена", "en": "❌ Cancel"},
-        "btn_ask_here": {
-            "ru": "💬 Написать вопрос здесь",
-            "en": "💬 Ask a question here",
-        },
 
         "name_ask": {
             "ru": "Как к вам обращаться? (имя или имя + фамилия)",
@@ -168,6 +164,32 @@ def t(label: str, lang: str = "ru") -> str:
             "ru": "Раздел для врачей: когда направлять, как объяснять пациентам и как использовать результаты.\n",
             "en": "For doctors: when to refer, how to explain screening and how to use the results.\n",
         },
+
+        # --- Новые тексты для чата через бота /reply ---
+        "chat_forwarded_user": {
+            "ru": "Я передал ваш вопрос. Ответ придёт в этом чате 👇",
+            "en": "I’ve forwarded your message. You’ll get a reply here 👇",
+        },
+        "chat_owner_hint": {
+            "ru": "Сообщение не распознано как команда. Используйте /reply <user_id> <текст> для ответа пользователю.",
+            "en": "Message not recognized as a command. Use /reply <user_id> <text> to answer a user.",
+        },
+        "reply_usage": {
+            "ru": "Формат: /reply <user_id> <текст ответа>",
+            "en": "Usage: /reply <user_id> <reply text>",
+        },
+        "reply_not_owner": {
+            "ru": "Эта команда доступна только владельцу бота.",
+            "en": "This command is only available to the bot owner.",
+        },
+        "reply_sent": {
+            "ru": "Ответ отправлен пользователю.",
+            "en": "Reply sent to the user.",
+        },
+        "reply_failed": {
+            "ru": "Не удалось отправить сообщение пользователю.",
+            "en": "Failed to send message to the user.",
+        },
     }
     return texts.get(label, {}).get(lang, texts.get(label, {}).get("ru", label))
 
@@ -234,10 +256,48 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_text(t("main_menu_title", lang), reply_markup=main_menu_keyboard(lang))
 
 
+async def forward_user_message_for_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Любое непонятное текстовое сообщение от обычного пользователя
+    пересылаем владельцу и отвечаем пользователю, что вопрос передан.
+    """
+    if not OWNER_CHAT_ID:
+        return
+
+    user = update.effective_user
+    text = update.message.text or ""
+    lang = get_lang(update)
+
+    username = f"@{user.username}" if user and user.username else "—"
+    full_name = " ".join(filter(None, [user.first_name, user.last_name])) if user else "—"
+
+    lines = [
+        "💬 Новое сообщение от пользователя (чат через бота)",
+        "",
+        f"Имя: {full_name}",
+        f"Username: {username}",
+        f"User ID: {user.id if user else '—'}",
+        "",
+        "Текст:",
+        text,
+        "",
+        f"Для ответа: /reply {user.id} <ваш текст>",
+    ]
+
+    try:
+        await context.bot.send_message(chat_id=OWNER_CHAT_ID, text="\n".join(lines))
+    except Exception as e:
+        logger.error(f"Failed to forward user message: {e}")
+
+    await update.message.reply_text(t("chat_forwarded_user", lang))
+
+
 async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
     text = (update.message.text or "").strip()
+    chat_id = update.effective_chat.id
 
+    # Кнопки главного меню
     if text == t("btn_plan", lang):
         return await plan_start(update, context)
 
@@ -250,10 +310,14 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == t("btn_faq", lang):
         return await faq_menu_entry(update, context)
 
-    await update.message.reply_text(
-        t("unknown_command", lang),
-        reply_markup=main_menu_keyboard(lang),
-    )
+    # Всё остальное — либо сообщение владельца, либо вопрос от пользователя
+    if chat_id == OWNER_CHAT_ID:
+        # Для тебя — просто подсказка, чтобы не удивляться
+        await update.message.reply_text(t("chat_owner_hint", lang))
+        return
+
+    # Пользователь пишет что-то "своё" → пересылаем тебе как чат через бота
+    await forward_user_message_for_chat(update, context)
 
 
 # ---------------------------------------------------------------------
@@ -343,6 +407,7 @@ PLAN_TEXT_HOW = (
 
 
 async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Старт раздела «Планируем / ждём ребёнка» по нажатию кнопки в главном меню."""
     msg = update.message
     if msg:
         await msg.reply_text(
@@ -352,6 +417,7 @@ async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработка всех callback'ов раздела планирования."""
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -414,6 +480,7 @@ async def plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 # ---------------------------------------------------------------------
 
 async def contact_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Старт контакта при нажатии на кнопку в главном меню."""
     lang = get_lang(update)
     context.user_data["lang"] = lang
     context.user_data["lead"] = {}
@@ -434,6 +501,7 @@ async def contact_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def contact_start_from_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Старт контакта из раздела 'Планируем / ждём ребёнка' с автозаполненным вопросом."""
     lang = get_lang(update)
     context.user_data["lang"] = lang
     context.user_data["lead"] = {"question": "Хочу подобрать тест"}
@@ -457,6 +525,7 @@ async def contact_start_from_plan(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def contact_start_from_doctor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Старт контакта из раздела 'Я врач' с автозаполненным вопросом."""
     lang = get_lang(update)
     context.user_data["lang"] = lang
     context.user_data["lead"] = {
@@ -488,25 +557,20 @@ async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_cancel(txt, lang):
         return await cancel_contact(update)
 
-    # сохраняем имя
     context.user_data["lead"]["name"] = txt
-
-    intro = (
-        f"Отлично, {txt}! 🙌\n\n"
-        "Чтобы я мог подсказать именно под вашу ситуацию — "
-        "выберите, как удобнее продолжить:"
-    )
 
     kb = ReplyKeyboardMarkup(
         [
             [KeyboardButton("📱 Отправить мой номер", request_contact=True)],
-            [t("btn_ask_here", lang)],
             [t("btn_back", lang), t("btn_cancel", lang)],
         ],
         resize_keyboard=True,
     )
 
-    await update.message.reply_text(intro, reply_markup=kb)
+    await update.message.reply_text(
+        t("phone_ask", lang),
+        reply_markup=kb,
+    )
     return CONTACT_PHONE
 
 
@@ -522,41 +586,17 @@ async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_cancel(txt, lang):
             return await cancel_contact(update)
         if is_back(txt, lang):
-            # возврат к шагу с вводом имени
-            await update.message.reply_text(
-                t("name_ask", lang),
-                reply_markup=ReplyKeyboardMarkup(
-                    [
-                        [KeyboardButton("📱 Отправить мой номер", request_contact=True)],
-                        [t("btn_cancel", lang)],
-                    ],
-                    resize_keyboard=True,
-                ),
-            )
-            return CONTACT_NAME
+            return await contact_start(update, context)
 
-        # новый путь: человек не хочет давать номер, выбирает "Написать вопрос здесь"
-        if txt == t("btn_ask_here", lang):
-            await update.message.reply_text(
-                t("question_ask", lang),
-                reply_markup=back_cancel_keyboard(lang),
-            )
-            return CONTACT_QUESTION
+    if not is_valid_phone(txt):
+        await update.message.reply_text(
+            t("phone_invalid", lang),
+            parse_mode="Markdown",
+            reply_markup=back_cancel_keyboard(lang),
+        )
+        return CONTACT_PHONE
 
-    # сюда попадаем, если у нас всё-таки есть номер
-    if not update.message.contact and txt and txt != t("btn_ask_here", lang):
-        if not is_valid_phone(txt):
-            await update.message.reply_text(
-                t("phone_invalid", lang),
-                parse_mode="Markdown",
-                reply_markup=back_cancel_keyboard(lang),
-            )
-            return CONTACT_PHONE
-
-    # если номер валидный или пришёл через contact
-    if update.message.contact or is_valid_phone(txt):
-        context.user_data["lead"]["phone"] = txt
-
+    context.user_data["lead"]["phone"] = txt
     lead = context.user_data["lead"]
 
     if "question" in lead and lead["question"]:
@@ -642,18 +682,13 @@ async def contact_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data["lang"]
     lead = context.user_data["lead"]
 
-    phone = lead.get("phone", "не указан")
-    question = lead.get("question", "не указан")
-    time_val = lead.get("time", "не указано")
-    method = lead.get("method", "не указан")
-
     lines = [
         t("contact_summary", lang),
-        f"{t('summary_name', lang)}: {lead.get('name', '—')}",
-        f"{t('summary_phone', lang)}: {phone}",
-        f"{t('summary_question', lang)}: {question}",
-        f"{t('summary_time', lang)}: {time_val}",
-        f"{t('summary_method', lang)}: {method}",
+        f"{t('summary_name', lang)}: {lead['name']}",
+        f"{t('summary_phone', lang)}: {lead['phone']}",
+        f"{t('summary_question', lang)}: {lead['question']}",
+        f"{t('summary_time', lang)}: {lead['time']}",
+        f"{t('summary_method', lang)}: {lead['method']}",
         "",
         t("confirm_ask", lang),
     ]
@@ -704,24 +739,55 @@ async def send_lead(update: Update, lang: str, lead: Dict[str, Any]):
         return
 
     user = update.effective_user
-    phone = lead.get("phone", "не указан")
-    question = lead.get("question", "не указан")
-    time_val = lead.get("time", "не указано")
-    method = lead.get("method", "не указан")
-
     lines = [
         t("lead_sent_owner_title", lang),
         "",
-        f"{t('summary_name', lang)}: {lead.get('name', '—')}",
-        f"{t('summary_phone', lang)}: {phone}",
-        f"{t('summary_question', lang)}: {question}",
-        f"{t('summary_time', lang)}: {time_val}",
-        f"{t('summary_method', lang)}: {method}",
+        f"{t('summary_name', lang)}: {lead['name']}",
+        f"{t('summary_phone', lang)}: {lead['phone']}",
+        f"{t('summary_question', lang)}: {lead['question']}",
+        f"{t('summary_time', lang)}: {lead['time']}",
+        f"{t('summary_method', lang)}: {lead['method']}",
         "",
         f"User ID: {user.id}",
         f"Username: @{user.username}" if user.username else "Username: —",
     ]
     await update.get_bot().send_message(OWNER_CHAT_ID, "\n".join(lines))
+
+
+# ---------------------------------------------------------------------
+# /reply — ОТВЕТ ЧЕРЕЗ БОТА ПОЛЬЗОВАТЕЛЮ
+# ---------------------------------------------------------------------
+
+async def reply_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = get_lang(update)
+    chat_id = update.effective_chat.id
+
+    # Только для владельца бота
+    if chat_id != OWNER_CHAT_ID:
+        await update.message.reply_text(t("reply_not_owner", lang))
+        return
+
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text(t("reply_usage", lang))
+        return
+
+    try:
+        user_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text(t("reply_usage", lang))
+        return
+
+    reply_text = " ".join(context.args[1:]).strip()
+    if not reply_text:
+        await update.message.reply_text(t("reply_usage", lang))
+        return
+
+    try:
+        await context.bot.send_message(chat_id=user_id, text=reply_text)
+        await update.message.reply_text(t("reply_sent", lang))
+    except Exception as e:
+        logger.error(f"Failed to send reply to {user_id}: {e}")
+        await update.message.reply_text(t("reply_failed", lang))
 
 
 # ---------------------------------------------------------------------
@@ -990,6 +1056,7 @@ def build_doctor_main_keyboard() -> InlineKeyboardMarkup:
 
 
 async def doctor_menu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Старт раздела 'Я врач' по нажатию кнопки в главном меню."""
     msg = update.message
     if msg:
         await msg.reply_text(
@@ -1000,6 +1067,7 @@ async def doctor_menu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def doctor_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка всех callback'ов раздела 'Я врач'."""
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -1232,14 +1300,15 @@ def main():
     )
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("reply", reply_command))
     app.add_handler(contact_conv)
 
+    # Текстовые сообщения (без /команд) → главное меню / чат через бота
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu))
 
+    # Callback'и
     app.add_handler(CallbackQueryHandler(plan_callback, pattern=r"^plan_"))
-
     app.add_handler(CallbackQueryHandler(doctor_menu_callback, pattern=r"^doc_"))
-
     app.add_handler(CallbackQueryHandler(faq_answer, pattern=r"^faq_"))
     app.add_handler(CallbackQueryHandler(doctor_faq_answer, pattern=r"^dfaq_"))
 
