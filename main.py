@@ -57,7 +57,7 @@ def t(label: str, lang: str = "ru") -> str:
         "btn_plan": {"ru": "👶 Планируем / ждём ребёнка", "en": "👶 Planning / expecting a baby"},
         "btn_doctor": {"ru": "👨‍⚕️ Я врач", "en": "👨‍⚕️ I am a doctor"},
         "btn_contact": {"ru": "📝 Записаться / Оставить контакты", "en": "📝 Leave contacts / book a call"},
-        "btn_free_question": {"ru": "/Написать свой вопрос", "en": "Write my question"},
+        "btn_free_question": {"ru": "/Написать свой вопрос(v2 TEST)", "en": "Write my question(v2 TEST)"},
         "btn_end_free": {
     "ru": "Закончить диалог / Вернуться к меню",
     "en": "End dialog / Back to menu",
