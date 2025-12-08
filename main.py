@@ -283,14 +283,14 @@ async def forward_free_message(update: Update, context: ContextTypes.DEFAULT_TYP
     lines_out = [
         t("free_q_owner_title", lang),
         "",
-        f"User ID: {user.id if user else '—'}",
-        f"Username: @{user.username}" if getattr(user, "username", None) else "Username: —",
+        f"User ID: {user.id if user else '–'}",
+        f"Username: @{user.username}" if getattr(user, "username", None) else "Username: –",
         f"Имя: {user.full_name}" if getattr(user, "full_name", None) else "",
         "",
         "Сообщение:",
         text,
     ]
-    # Убираем возможные пустые строки в конце
+
     msg_text = "\n".join([ln for ln in lines_out if ln != ""])
 
     await context.bot.send_message(chat_id=OWNER_CHAT_ID, text=msg_text)
