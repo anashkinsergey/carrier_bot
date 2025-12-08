@@ -325,8 +325,8 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == t("btn_free_question", lang):
         return await explain_free_question(update, context)
-        
-        if text == t("btn_end_free", lang):
+
+    if text == t("btn_end_free", lang):
         context.user_data["free_mode"] = False
         await update.message.reply_text(
             "Диалог завершён. Возвращаю вас в главное меню.",
@@ -334,7 +334,7 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Если пользователь уже включил режим свободных вопросов —
+    # Если пользователь уже включил режим свободных вопросов –
     # трактуем любое непонятное меню сообщение как вопрос врачу.
     if context.user_data.get("free_mode"):
         return await forward_free_message(update, context)
@@ -344,7 +344,6 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         t("unknown_command", lang),
         reply_markup=main_menu_keyboard(lang),
     )
-
 
 # ---------------------------------------------------------------------
 # РАЗДЕЛ "ПЛАНИРУЕМ / ЖДЁМ РЕБЁНКА"
