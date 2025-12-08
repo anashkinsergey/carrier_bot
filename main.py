@@ -294,8 +294,8 @@ async def forward_free_message(update: Update, context: ContextTypes.DEFAULT_TYP
         text,
     ]
 
-    msg_text = "\n".join([ln for ln in lines_out if ln != ""])
-".join([ln for ln in lines_out if ln != ""])
+        msg_text = "\n".join([ln for ln in lines_out if ln != ""])
+
 
     await context.bot.send_message(chat_id=OWNER_CHAT_ID, text=msg_text)
 
@@ -375,17 +375,17 @@ async def free_contact_phone_handler(update: Update, context: ContextTypes.DEFAU
     if not contact:
         return
 
-    if OWNER_CHAT_ID:
-        lines = [
-            "📬 Контакт из режима свободного вопроса (телефон)",
-            f"User ID: {user.id if user else '–'}",
-            f"Username: @{user.username}" if getattr(user, "username", None) else "Username: –",
-            f"Имя: {user.full_name}" if getattr(user, "full_name", None) else "",
-            f"Телефон: {contact.phone_number}",
-        ]
-        msg_text = "\n".join([ln for ln in lines if ln])
-".join([ln for ln in lines if ln])
-        await context.bot.send_message(OWNER_CHAT_ID, msg_text)
+   if OWNER_CHAT_ID:
+    lines = [
+        "📬 Контакт из режима свободного вопроса (телефон)",
+        f"User ID: {user.id if user else '-'}",
+        f"Username: @{user.username}" if getattr(user, "username", None) else "Username: -",
+        f"Имя: {user.full_name}" if getattr(user, "full_name", None) else "",
+        f"Телефон: {contact.phone_number}",
+    ]
+    msg_text = "\n".join([ln for ln in lines if ln])
+    await context.bot.send_message(chat_id=OWNER_CHAT_ID, text=msg_text)
+
 
     await update.message.reply_text(
         "Спасибо! Я сохранил ваш номер телефона.",
