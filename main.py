@@ -1188,7 +1188,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu))
 
     app.add_handler(CallbackQueryHandler(plan_callback, pattern=r"^plan_"))
-    app.add_handler(CallbackQueryHandler(doctor_menu_callback, pattern=r"^doc_"))
+    app.add_handler(CallbackQueryHandler(doctor_menu_callback, pattern=r"^(doctor_menu_|doc_back_)"))
     app.add_handler(CallbackQueryHandler(faq_answer, pattern=r"^faq_"))
     app.add_handler(CallbackQueryHandler(doctor_faq_answer, pattern=r"^dfaq_"))
 
