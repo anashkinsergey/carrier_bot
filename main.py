@@ -294,7 +294,7 @@ async def forward_free_message(update: Update, context: ContextTypes.DEFAULT_TYP
         text,
     ]
 
-    msg_text = "
+    msg_text = "\n".join([ln for ln in lines_out if ln != ""])
 ".join([ln for ln in lines_out if ln != ""])
 
     await context.bot.send_message(chat_id=OWNER_CHAT_ID, text=msg_text)
@@ -383,7 +383,7 @@ async def free_contact_phone_handler(update: Update, context: ContextTypes.DEFAU
             f"Имя: {user.full_name}" if getattr(user, "full_name", None) else "",
             f"Телефон: {contact.phone_number}",
         ]
-        msg_text = "
+        msg_text = "\n".join([ln for ln in lines if ln])
 ".join([ln for ln in lines if ln])
         await context.bot.send_message(OWNER_CHAT_ID, msg_text)
 
