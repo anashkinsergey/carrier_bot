@@ -190,16 +190,20 @@ def get_lang(update: Update) -> str:
     return "ru"
 
 
-def main_menu_keyboard(lang: str) -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        [
-            [t("btn_plan", lang)],
-            [t("btn_doctor", lang)],
-            [t("btn_contact", lang), t("btn_free_question", lang)],
-            [t("btn_faq", lang)],
-        ],
-        resize_keyboard=True,
-    )
+def main_menu_keyboard(lang: str, free_mode: bool = False) -> ReplyKeyboardMarkup:
+    rows = [
+        [t("btn_plan", lang)],
+        [t("btn_doctor", lang)],
+        [t("btn_contact", lang), t("btn_free_question", lang)],
+        [t("btn_faq", lang)],
+    ]
+
+    # Если включён режим свободного диалога — добавляем кнопку выхода
+    if free_mode:
+        rows.append([t("btn_end_free", lang)])
+
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
 
 
 def back_cancel_keyboard(lang: str) -> ReplyKeyboardMarkup:
