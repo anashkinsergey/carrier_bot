@@ -59,9 +59,9 @@ def t(label: str, lang: str = "ru") -> str:
         "btn_contact": {"ru": "📝 Записаться / Оставить контакты", "en": "📝 Leave contacts / book a call"},
         "btn_free_question": {"ru": "/Написать свой вопрос", "en": "Write my question"},
         "btn_end_free": {
-    "ru": "Закончить диалог / Вернуться к меню",
-    "en": "End dialog / Back to menu",
-},
+            "ru": "Закончить диалог / Вернуться к меню",
+            "en": "End dialog / Back to menu",
+        },
         "free_q_button_explain": {
             "ru": (
                 "Можете просто написать здесь свой вопрос в одном или нескольких сообщениях.\n\n"
@@ -205,7 +205,6 @@ def main_menu_keyboard(lang: str, free_mode: bool = False) -> ReplyKeyboardMarku
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 
-
 def back_cancel_keyboard(lang: str) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [[t("btn_back", lang), t("btn_cancel", lang)]],
@@ -235,7 +234,7 @@ def is_valid_phone(phone: str) -> bool:
 
 
 # ---------------------------------------------------------------------
-# ГЛАВНОЕ МЕНЮ
+# ГЛАВНОЕ МЕНЮ / СТАРТ
 # ---------------------------------------------------------------------
 
 
@@ -263,9 +262,14 @@ async def explain_free_question(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 
+# ---------------------------------------------------------------------
+# СВОБОДНЫЙ ВОПРОС + КОНТАКТЫ (НОВАЯ ЛОГИКА)
+# ---------------------------------------------------------------------
+
 
 async def forward_free_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Пересылает свободный вопрос владельцу и отвечает пользователю.
+    """
+    Пересылает свободный вопрос владельцу и отвечает пользователю.
     Дополнено: после сообщения предлагается оставить контакт (телефон или @username).
     """
     if not OWNER_CHAT_ID:
@@ -294,8 +298,7 @@ async def forward_free_message(update: Update, context: ContextTypes.DEFAULT_TYP
         text,
     ]
 
-        msg_text = "\n".join([ln for ln in lines_out if ln != ""])
-
+    msg_text = "\n".join([ln for ln in lines_out if ln != ""])
 
     await context.bot.send_message(chat_id=OWNER_CHAT_ID, text=msg_text)
 
@@ -352,12 +355,12 @@ async def free_contact_callback(update: Update, context: ContextTypes.DEFAULT_TY
         if OWNER_CHAT_ID:
             lines = [
                 "📬 Контакт из режима свободного вопроса (username)",
-                f"User ID: {user.id}",
+                f"User ID: {user.id if user else '–'}",
                 f"Username: @{username}",
                 f"Имя: {user.full_name}" if getattr(user, "full_name", None) else "",
             ]
-            await context.bot.send_message(OWNER_CHAT_ID, "
-".join([ln for ln in lines if ln]))
+            msg_text = "\n".join([ln for ln in lines if ln])
+            await context.bot.send_message(chat_id=OWNER_CHAT_ID, text=msg_text)
 
         await query.message.reply_text(
             "Спасибо! Я сохранил ваш @username как контакт.",
@@ -368,6 +371,10 @@ async def free_contact_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def free_contact_phone_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка отправки телефона как contact после свободного вопроса."""
+    # Не реагируем, если это контакт от владельца
+    if update.effective_user and update.effective_user.id == OWNER_CHAT_ID:
+        return
+
     contact = update.message.contact
     user = update.effective_user
     lang = get_lang(update)
@@ -375,17 +382,16 @@ async def free_contact_phone_handler(update: Update, context: ContextTypes.DEFAU
     if not contact:
         return
 
-   if OWNER_CHAT_ID:
-    lines = [
-        "📬 Контакт из режима свободного вопроса (телефон)",
-        f"User ID: {user.id if user else '-'}",
-        f"Username: @{user.username}" if getattr(user, "username", None) else "Username: -",
-        f"Имя: {user.full_name}" if getattr(user, "full_name", None) else "",
-        f"Телефон: {contact.phone_number}",
-    ]
-    msg_text = "\n".join([ln for ln in lines if ln])
-    await context.bot.send_message(chat_id=OWNER_CHAT_ID, text=msg_text)
-
+    if OWNER_CHAT_ID:
+        lines = [
+            "📬 Контакт из режима свободного вопроса (телефон)",
+            f"User ID: {user.id if user else '–'}",
+            f"Username: @{user.username}" if getattr(user, "username", None) else "Username: –",
+            f"Имя: {user.full_name}" if getattr(user, "full_name", None) else "",
+            f"Телефон: {contact.phone_number}",
+        ]
+        msg_text = "\n".join([ln for ln in lines if ln])
+        await context.bot.send_message(chat_id=OWNER_CHAT_ID, text=msg_text)
 
     await update.message.reply_text(
         "Спасибо! Я сохранил ваш номер телефона.",
@@ -394,7 +400,6 @@ async def free_contact_phone_handler(update: Update, context: ContextTypes.DEFAU
 
 
 async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
 
     # Сообщения владельца обрабатываются отдельно (auto-reply),
@@ -437,6 +442,7 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         t("unknown_command", lang),
         reply_markup=main_menu_keyboard(lang),
     )
+
 
 # ---------------------------------------------------------------------
 # РАЗДЕЛ "ПЛАНИРУЕМ / ЖДЁМ РЕБЁНКА"
@@ -1093,6 +1099,11 @@ async def doctor_faq_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ---------------------------------------------------------------------
+# АВТООТВЕТ ВЛАДЕЛЬЦА
+# ---------------------------------------------------------------------
+
+
 async def owner_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик ответов владельца в его чате: авто-ответ пользователю без команд."""
     # Гарантируем, что обрабатываем только сообщения владельца
@@ -1162,6 +1173,17 @@ def main():
         )
     )
 
+    # Контакт (телефон) после свободного вопроса
+    app.add_handler(
+        MessageHandler(
+            filters.CONTACT & ~filters.Chat(OWNER_CHAT_ID),
+            free_contact_phone_handler,
+        )
+    )
+
+    # Inline-кнопки выбора контакта после свободного вопроса
+    app.add_handler(CallbackQueryHandler(free_contact_callback, pattern=r"^free_contact_"))
+
     # Общий обработчик текстовых сообщений пользователей (главное меню и свободные вопросы)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu))
 
@@ -1169,13 +1191,6 @@ def main():
     app.add_handler(CallbackQueryHandler(doctor_menu_callback, pattern=r"^doc_"))
     app.add_handler(CallbackQueryHandler(faq_answer, pattern=r"^faq_"))
     app.add_handler(CallbackQueryHandler(doctor_faq_answer, pattern=r"^dfaq_"))
-
-
-    # Хэндлер для контакта (телефон) после свободного вопроса
-    app.add_handler(MessageHandler(filters.CONTACT, free_contact_phone_handler))
-
-    # Хэндлер для inline-кнопок выбора контакта после свободного вопроса
-    app.add_handler(CallbackQueryHandler(free_contact_callback, pattern=r"^free_contact_"))
 
     app.run_polling()
 
