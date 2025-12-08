@@ -259,7 +259,7 @@ async def explain_free_question(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data["free_mode"] = True
     await update.message.reply_text(
         t("free_q_button_explain", lang),
-        reply_markup=main_menu_keyboard(lang),
+        reply_markup=main_menu_keyboard(lang, free_mode=True),
     )
 
 
@@ -297,7 +297,7 @@ async def forward_free_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     await update.message.reply_text(
         t("free_q_user", lang),
-        reply_markup=main_menu_keyboard(lang),
+        reply_markup=main_menu_keyboard(lang, free_mode=True),
     )
 
 
@@ -325,6 +325,14 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == t("btn_free_question", lang):
         return await explain_free_question(update, context)
+        
+        if text == t("btn_end_free", lang):
+        context.user_data["free_mode"] = False
+        await update.message.reply_text(
+            "Диалог завершён. Возвращаю вас в главное меню.",
+            reply_markup=main_menu_keyboard(lang),
+        )
+        return
 
     # Если пользователь уже включил режим свободных вопросов —
     # трактуем любое непонятное меню сообщение как вопрос врачу.
