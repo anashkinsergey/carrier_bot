@@ -750,16 +750,25 @@ async def contact_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     comment = data.get("comment", "-")
     source = data.get("source", "-")
 
+    user = update.effective_user
+    user_id = user.id if user else "–"
+    username = getattr(user, "username", None)
+    full_name = getattr(user, "full_name", None)
+
     owner_lines = [
         t("lead_sent_owner_title", lang),
         "",
-        f"Имя: {name}",
+        f"User ID: {user_id}",
+        f"Username: @{username}" if username else "Username: –",
+        f"Имя в Telegram: {full_name}" if full_name else "",
+        "",
+        f"Имя (из заявки): {name}",
         f"Телефон: {phone}",
         f"Как связаться удобнее: {how}",
         f"Комментарий: {comment}",
         f"Источник: {source}",
     ]
-    owner_text = "\n".join(owner_lines)
+    owner_text = "\n".join([ln for ln in owner_lines if ln])
 
     if OWNER_CHAT_ID:
         try:
