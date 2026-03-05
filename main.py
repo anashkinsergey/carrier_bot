@@ -1,7 +1,7 @@
 import os
 import re
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from telegram import (
     Update,
@@ -25,11 +25,19 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
-logger.info("🚀 Bot started: carrier_screening_bot")
-
+logger.info("Bot started: carrier_screening_bot")
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 OWNER_CHAT_ID = int(os.environ.get("OWNER_CHAT_ID", "0"))
+
+# Чтобы deeplink всегда был корректным:
+# BOT_USERNAME=CarrierScreeningBot
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "CarrierScreeningBot").lstrip("@").strip()
+
+
+def deeplink(payload: str) -> str:
+    # payload: question / plan / doctor
+    return f"https://t.me/{BOT_USERNAME}?start={payload}"
 
 
 def t(label: str, lang: str = "ru") -> str:
@@ -37,32 +45,44 @@ def t(label: str, lang: str = "ru") -> str:
         "greeting": {
             "ru": (
                 "Здесь можно спокойно разобраться, есть ли в вашей ситуации вопрос по генетике.\n\n"
-                "Любой вопрос здесь уместен — даже если он кажется простым или «глупым».\n\n"
+                "Любой вопрос здесь уместен — даже если он кажется простым.\n\n"
                 "Можно задать свой вопрос — коротко или как получится.\n"
                 "Можно просто посмотреть варианты.\n"
                 "Можно закрыть тему и вернуться позже.\n\n"
                 "Если не знаете, с чего начать — напишите 2–3 предложения о вашей ситуации как получится.\n\n"
                 "Важно: это не консультация и не запись к врачу."
             ),
+            "en": (
+                "Here you can calmly understand whether genetics is relevant to your situation.\n\n"
+                "Any question is welcome — even if it seems simple.\n\n"
+                "You can ask your question — short or however it comes out.\n"
+                "You can just browse options.\n"
+                "You can close the topic and return later.\n\n"
+                "If you don’t know where to start — write 2–3 sentences about your situation.\n\n"
+                "Important: this is not a medical consultation and not an appointment booking."
+            ),
         },
         "main_menu_title": {"ru": "Выберите раздел:", "en": "Choose a section:"},
+
+        # Кнопки главного меню
         "btn_plan": {"ru": "👶 Планируем / ждём ребёнка", "en": "👶 Planning / expecting a baby"},
         "btn_doctor": {"ru": "👨‍⚕️ Я врач", "en": "👨‍⚕️ I am a doctor"},
-        "btn_contact": {"ru": "📝 Записаться / Оставить контакты", "en": "📝 Leave contacts / book a call"},
-        "btn_free_question": {"ru": "/Написать свой вопрос", "en": "Write my question"},
-        "btn_end_free": {
-            "ru": "Закончить диалог / Вернуться к меню",
-            "en": "End dialog / Back to menu",
-        },
+        "btn_contact": {"ru": "📱 Оставить контакты", "en": "📱 Leave contacts"},
+        "btn_free_question": {"ru": "✍️ Написать свой вопрос", "en": "✍️ Write my question"},
+        "btn_end_free": {"ru": "Закончить диалог / Вернуться к меню", "en": "End dialog / Back to menu"},
+        "btn_faq": {"ru": "❓ FAQ", "en": "❓ FAQ"},
+
+        # Подсказки режима "свободного вопроса"
         "free_q_button_explain": {
             "ru": (
-                "Можете просто написать здесь свой вопрос в одном или нескольких сообщениях.\n\n"
-                "Это можно сделать без телефона и других контактов — я всё равно передам ваши сообщения врачу.\n\n"
-                "Если не знаете, с чего начать — напишите 2–3 предложения о вашей ситуации как получится."
+                "Напишите здесь свой вопрос (одним или несколькими сообщениями) — как получается.\n\n"
+                "Контакты оставлять не обязательно.\n"
+                "Если захотите — сможете оставить телефон или @username после отправки вопроса."
             ),
             "en": (
-                "You can just type your question here in one or several messages.\n\n"
-                "You don’t have to leave a phone or any contacts — I will still forward your messages to the doctor."
+                "Type your question here (one or several messages) — however it comes out.\n\n"
+                "Leaving contacts is optional.\n"
+                "If you want, you can leave a phone or @username after sending the question."
             ),
         },
         "free_q_user": {
@@ -73,21 +93,16 @@ def t(label: str, lang: str = "ru") -> str:
                 "I’ve forwarded your message. You can keep chatting here in this bot — replies will arrive in the same chat."
             ),
         },
-        "free_q_owner_title": {
-            "ru": "💬 Новое сообщение в боте (без заявки)",
-            "en": "💬 New bot message (no lead form)",
+        "free_q_owner_title": {"ru": "Новое сообщение в боте (без заявки)", "en": "New bot message (no lead form)"},
+        "unknown_command": {
+            "ru": "Пока не знаю, что делать с этим. Используйте меню ниже.",
+            "en": "I don’t know what to do with that. Use the menu below.",
         },
-        "btn_faq": {"ru": "❓ FAQ", "en": "❓ FAQ"},
+
+        # Контакты / форма
         "btn_back": {"ru": "⬅️ Назад", "en": "⬅️ Back"},
         "btn_cancel": {"ru": "❌ Отмена", "en": "❌ Cancel"},
-        "name_ask": {
-            "ru": "Как к вам обращаться? (имя или имя + фамилия)",
-            "en": "How should I call you? (name or full name)",
-        },
-        "phone_ask": {
-            "ru": "Напишите, пожалуйста, номер телефона для связи:",
-            "en": "Please send your phone number (with country code):",
-        },
+        "name_ask": {"ru": "Как к вам обращаться? (имя или имя + фамилия)", "en": "How should I call you? (name or full name)"},
         "phone_invalid": {
             "ru": (
                 "Похоже, номер в неверном формате.\n\n"
@@ -99,22 +114,6 @@ def t(label: str, lang: str = "ru") -> str:
                 "For example: +1 212 555 1234.\n"
                 "Please try again."
             ),
-        },
-        "contact_how_ask": {
-            "ru": "Как вам удобнее продолжить общение?",
-            "en": "How would you prefer to continue communication?",
-        },
-        "contact_how_phone": {
-            "ru": "📞 Позвонить / написать в мессенджер",
-            "en": "📞 Call / messenger",
-        },
-        "contact_how_telegram": {
-            "ru": "💬 Написать в Telegram",
-            "en": "💬 Message in Telegram",
-        },
-        "contact_how_other": {
-            "ru": "✉️ Другая форма связи (email и т.п.)",
-            "en": "✉️ Another way (email etc.)",
         },
         "comment_ask": {
             "ru": "Если хотите, кратко напишите, что для вас сейчас актуально (по желанию):",
@@ -130,23 +129,14 @@ def t(label: str, lang: str = "ru") -> str:
                 "We’ll contact you to help choose an appropriate genetic test."
             ),
         },
-        "lead_sent_user": {
-            "ru": "Готово! Я передал вашу заявку. С вами свяжутся в ближайшее время.",
-            "en": "Done! Your request has been sent. We’ll contact you soon.",
-        },
-        "lead_sent_owner_title": {"ru": "📬 Новая заявка", "en": "📬 New Lead"},
-        "unknown_command": {
-            "ru": "Пока не знаю, что делать с этим. Используйте меню ниже.",
-            "en": "I don’t know what to do with that. Use the menu below.",
-        },
+        "lead_sent_owner_title": {"ru": "Новая заявка", "en": "New Lead"},
+
+        # FAQ меню
         "faq_menu_title": {
             "ru": "❓ *FAQ по скринингу на носительство*\n\nВыберите вопрос:",
             "en": "❓ *Carrier screening FAQ*\n\nChoose a question:",
         },
-        "faq_doctor_title": {
-            "ru": "👨‍⚕️ *FAQ для врачей*\n",
-            "en": "👨‍⚕️ *Doctor FAQ*\n",
-        },
+        "faq_doctor_title": {"ru": "👨‍⚕️ *FAQ для врачей*\n", "en": "👨‍⚕️ *Doctor FAQ*\n"},
         "doctor_intro": {
             "ru": (
                 "\n"
@@ -185,10 +175,7 @@ def main_menu_keyboard(lang: str, free_mode: bool = False) -> ReplyKeyboardMarku
 
 
 def back_cancel_keyboard(lang: str) -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        [[t("btn_back", lang), t("btn_cancel", lang)]],
-        resize_keyboard=True,
-    )
+    return ReplyKeyboardMarkup([[t("btn_back", lang), t("btn_cancel", lang)]], resize_keyboard=True)
 
 
 def is_back(txt: str, lang: str) -> bool:
@@ -207,45 +194,63 @@ def is_valid_phone(phone: str) -> bool:
     return 10 <= len(digits) <= 15
 
 
+def looks_like_question(text: str) -> bool:
+    """
+    Мягкая эвристика: если человек пишет "живой текст", считаем это вопросом.
+    Не пытаемся быть умнее человека: лучше принять и переслать, чем потерять.
+    """
+    ttxt = (text or "").strip()
+    if not ttxt:
+        return False
+    if len(ttxt) >= 25:
+        return True
+    if "?" in ttxt:
+        return True
+    # короткие "наводки"
+    triggers = [
+        "подскаж",
+        "нужно ли",
+        "стоит ли",
+        "как быть",
+        "что делать",
+        "мы планируем",
+        "беременность",
+        "скрининг",
+        "носительство",
+        "генетик",
+        "анализ",
+        "тест",
+    ]
+    low = ttxt.lower()
+    return any(x in low for x in triggers)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
 
-    start_param = (context.args[0] if context.args else "").strip().lower()
+    # Deeplink payload: /start <payload>
+    payload: Optional[str] = None
+    if context.args:
+        payload = (context.args[0] or "").strip().lower()
 
-    # Deeplink: question -> сразу режим вопроса (free_mode)
-    if start_param in ("q", "question", "ask"):
+    # По payload можно сразу увести в нужный сценарий
+    if payload == "question":
+        # сразу включаем режим вопроса
         context.user_data["free_mode"] = True
         await update.message.reply_text(
-            t("greeting", lang),
-            reply_markup=main_menu_keyboard(lang, free_mode=True),
-        )
-        await update.message.reply_text(
-            "Напишите вопрос одним или несколькими сообщениями — как получается.",
+            t("free_q_button_explain", lang),
             reply_markup=main_menu_keyboard(lang, free_mode=True),
         )
         return
-
-    # Deeplink: plan -> сразу в раздел планирования
-    if start_param in ("plan", "baby"):
-        await update.message.reply_text(
-            t("greeting", lang),
-            reply_markup=main_menu_keyboard(lang),
-        )
+    if payload == "plan":
+        await update.message.reply_text(t("greeting", lang), reply_markup=main_menu_keyboard(lang))
         return await plan_start(update, context)
-
-    # Deeplink: doctor -> сразу в раздел врача
-    if start_param in ("doc", "doctor"):
-        await update.message.reply_text(
-            t("greeting", lang),
-            reply_markup=main_menu_keyboard(lang),
-        )
+    if payload == "doctor":
+        await update.message.reply_text(t("greeting", lang), reply_markup=main_menu_keyboard(lang))
         return await doctor_menu_start(update, context)
 
-    # Default
-    await update.message.reply_text(
-        t("greeting", lang),
-        reply_markup=main_menu_keyboard(lang),
-    )
+    # обычный /start
+    await update.message.reply_text(t("greeting", lang), reply_markup=main_menu_keyboard(lang))
 
 
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -264,6 +269,9 @@ async def explain_free_question(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def forward_free_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Пересылаем любое сообщение пользователя владельцу.
+    """
     if not OWNER_CHAT_ID:
         return
     user = update.effective_user
@@ -274,7 +282,6 @@ async def forward_free_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     lang = get_lang(update)
     text = update.message.text or ""
-
     lines_out = [
         t("free_q_owner_title", lang),
         "",
@@ -295,8 +302,8 @@ async def forward_free_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     contact_keyboard = InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("📱 Оставить номер телефона", callback_data="free_contact_phone")],
-            [InlineKeyboardButton("💬 Использовать мой @username", callback_data="free_contact_username")],
+            [InlineKeyboardButton("Оставить номер телефона", callback_data="free_contact_phone")],
+            [InlineKeyboardButton("Использовать мой @username", callback_data="free_contact_username")],
         ]
     )
     await update.message.reply_text(
@@ -313,7 +320,7 @@ async def free_contact_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     if data == "free_contact_phone":
         kb = ReplyKeyboardMarkup(
-            [[KeyboardButton("📱 Отправить номер телефона", request_contact=True)]],
+            [[KeyboardButton("Отправить номер телефона", request_contact=True)]],
             resize_keyboard=True,
             one_time_keyboard=True,
         )
@@ -328,19 +335,19 @@ async def free_contact_callback(update: Update, context: ContextTypes.DEFAULT_TY
         username = getattr(user, "username", None)
         if not username:
             await query.answer()
-            await query.message.reply_text(
-                "У вас не установлен username в Telegram. Пожалуйста, оставьте номер телефона."
-            )
+            await query.message.reply_text("У вас не установлен username в Telegram. Можно оставить номер телефона.")
             return
+
         if OWNER_CHAT_ID:
             lines = [
-                "📬 Контакт из режима свободного вопроса (username)",
+                "Контакт из режима свободного вопроса (username)",
                 f"User ID: {user.id if user else '–'}",
                 f"Username: @{username}",
                 f"Имя: {user.full_name}" if getattr(user, "full_name", None) else "",
             ]
             msg_text = "\n".join([ln for ln in lines if ln])
             await context.bot.send_message(chat_id=OWNER_CHAT_ID, text=msg_text)
+
         await query.message.reply_text(
             "Спасибо! Я сохранил ваш @username как контакт.",
             reply_markup=main_menu_keyboard(lang, free_mode=True),
@@ -351,14 +358,16 @@ async def free_contact_callback(update: Update, context: ContextTypes.DEFAULT_TY
 async def free_contact_phone_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user and update.effective_user.id == OWNER_CHAT_ID:
         return
+
     contact = update.message.contact
     user = update.effective_user
     lang = get_lang(update)
     if not contact:
         return
+
     if OWNER_CHAT_ID:
         lines = [
-            "📬 Контакт из режима свободного вопроса (телефон)",
+            "Контакт из режима свободного вопроса (телефон)",
             f"User ID: {user.id if user else '–'}",
             f"Username: @{user.username}" if getattr(user, "username", None) else "Username: –",
             f"Имя: {user.full_name}" if getattr(user, "full_name", None) else "",
@@ -366,6 +375,7 @@ async def free_contact_phone_handler(update: Update, context: ContextTypes.DEFAU
         ]
         msg_text = "\n".join([ln for ln in lines if ln])
         await context.bot.send_message(chat_id=OWNER_CHAT_ID, text=msg_text)
+
     await update.message.reply_text(
         "Спасибо! Я сохранил ваш номер телефона.",
         reply_markup=main_menu_keyboard(lang, free_mode=True),
@@ -379,16 +389,24 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = (update.message.text or "").strip()
 
+    # Совместимость со старой кнопкой (вдруг у кого-то сохранилось)
+    legacy_free_question = ["/Написать свой вопрос", "/Write my question"]
+
     if text == t("btn_plan", lang):
         return await plan_start(update, context)
+
     if text == t("btn_doctor", lang):
         return await doctor_menu_start(update, context)
+
     if text == t("btn_contact", lang):
         return await contact_start(update, context)
+
     if text == t("btn_faq", lang):
         return await faq_menu_entry(update, context)
-    if text == t("btn_free_question", lang):
+
+    if text == t("btn_free_question", lang) or text in legacy_free_question:
         return await explain_free_question(update, context)
+
     if text == t("btn_end_free", lang):
         context.user_data["free_mode"] = False
         await update.message.reply_text(
@@ -397,20 +415,25 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Если уже режим свободного вопроса — пересылаем
+    # Если мы уже в режиме свободного вопроса — всё пересылаем
     if context.user_data.get("free_mode"):
         return await forward_free_message(update, context)
 
-    # Ключевое улучшение:
-    # если человек просто написал текст, не нажимая кнопку — считаем это вопросом
-    context.user_data["free_mode"] = True
-    await update.message.reply_text(
-        "Похоже, вы хотите задать вопрос.\n\n"
-        "Напишите его одним или несколькими сообщениями — как получается.",
-        reply_markup=main_menu_keyboard(lang, free_mode=True),
-    )
-    return await forward_free_message(update, context)
+    # Если НЕ в free_mode, но текст выглядит как вопрос — тоже считаем это вопросом
+    if looks_like_question(text):
+        context.user_data["free_mode"] = True
+        await update.message.reply_text(
+            "Похоже, вы хотите задать вопрос.\n\nНапишите его одним или несколькими сообщениями — как получается.",
+            reply_markup=main_menu_keyboard(lang, free_mode=True),
+        )
+        return await forward_free_message(update, context)
 
+    await update.message.reply_text(t("unknown_command", lang), reply_markup=main_menu_keyboard(lang))
+
+
+# -------------------------
+# Планируем / ждём ребёнка
+# -------------------------
 
 PLAN_MENU = "plan_menu"
 PLAN_BACK_MAIN = "plan_back_main"
@@ -428,8 +451,8 @@ def build_plan_main_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("Чем это полезно паре?", callback_data=PLAN_BENEFIT)],
         [InlineKeyboardButton("Что если найдут риск?", callback_data=PLAN_IF_FOUND)],
         [InlineKeyboardButton("Как проходит анализ?", callback_data=PLAN_HOW)],
-        [InlineKeyboardButton("Подобрать подходящий тест", callback_data="contact_from_plan")],
-        [InlineKeyboardButton("🔙 В главное меню", callback_data=PLAN_BACK_MAIN)],
+        [InlineKeyboardButton("Оставить контакты", callback_data="contact_from_plan")],
+        [InlineKeyboardButton("В главное меню", callback_data=PLAN_BACK_MAIN)],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -437,9 +460,8 @@ def build_plan_main_keyboard() -> InlineKeyboardMarkup:
 async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = build_plan_main_keyboard()
     await update.message.reply_text(
-        "👶 *Планируем / ждём ребёнка*\n\nВыберите, что именно вам интересно:",
+        "Планируем / ждём ребёнка\n\nВыберите, что именно вам интересно:",
         reply_markup=keyboard,
-        parse_mode="Markdown",
     )
 
 
@@ -449,70 +471,80 @@ async def plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == PLAN_BACK_MAIN:
         await query.edit_message_text("Возвращаю в главное меню…")
         return await show_main_menu(update, context)
+
     text = ""
     keyboard = None
+
     if data == PLAN_WHAT:
         text = (
-            "🔬 *Что вообще проверяют?*\n\n"
+            "Что вообще проверяют?\n\n"
             "Скрининг на носительство — это анализ ДНК, который смотрит, "
-            "несёт ли человек изменения в генах, связанные с тяжёлыми наследственными заболеваниями.\n\n"
+            "есть ли у человека изменения в генах, связанные с тяжёлыми наследственными заболеваниями.\n\n"
             "Важно: у самого носителя заболевание обычно не проявляется. "
             "Риск появляется, когда два носителя одного и того же заболевания планируют ребёнка."
         )
         keyboard = build_plan_main_keyboard()
+
     elif data == PLAN_RISK:
         text = (
-            "📊 *Какой риск может быть?*\n\n"
-            "Если оба родителя являются носителями одного и того же заболевания, "
-            "то в каждой беременности:\n"
+            "Какой риск может быть?\n\n"
+            "Если оба родителя — носители одного и того же заболевания, то в каждой беременности:\n"
             "• 25% — ребёнок с заболеванием;\n"
             "• 50% — ребёнок здоров, но носитель;\n"
             "• 25% — ребёнок без мутации.\n\n"
             "Скрининг помогает узнать об этом риске заранее."
         )
         keyboard = build_plan_main_keyboard()
+
     elif data == PLAN_BENEFIT:
         text = (
-            "💡 *Чем это полезно паре?*\n\n"
-            "Если риск обнаружен заранее, у пары есть несколько вариантов:\n"
-            "• планировать беременность с учётом риска;\n"
-            "• использовать ЭКО с преимплантационной генетической диагностикой (ПГТ);\n"
+            "Чем это полезно паре?\n\n"
+            "Если риск обнаружен заранее, у пары появляется выбор вариантов. Например:\n"
+            "• обсудить планирование беременности с учётом риска;\n"
+            "• рассмотреть ЭКО с ПГТ;\n"
             "• рассмотреть донорские клетки;\n"
-            "• принять осознанное решение идти своим путём, но уже зная о рисках.\n\n"
-            "Главная идея — больше осознанности и меньше неожиданностей."
+            "• принять своё решение, но уже понимая риски.\n\n"
+            "Главная идея — больше ясности и меньше неожиданностей."
         )
         keyboard = build_plan_main_keyboard()
+
     elif data == PLAN_IF_FOUND:
         text = (
-            "❗ *Что если найдут риск?*\n\n"
-            "1. Врач-генетик объяснит, о каком заболевании идёт речь и как оно проявляется.\n"
-            "2. Обсудит с вами возможные варианты действий.\n"
-            "3. Поможет спланировать дальнейшие шаги (включая варианты ЭКО + ПГТ, "
-            "донорские клетки и др.).\n\n"
-            "Наличие риска — это не приговор, а информация для выбора."
+            "Что если найдут риск?\n\n"
+            "Обычно дальше:\n"
+            "1) врач-генетик объясняет, о каком заболевании речь;\n"
+            "2) обсуждает варианты действий;\n"
+            "3) помогает спланировать дальнейшие шаги.\n\n"
+            "Наличие риска — не приговор, а информация для выбора."
         )
         keyboard = build_plan_main_keyboard()
+
     elif data == PLAN_HOW:
         text = (
-            "🧪 *Как проходит анализ?*\n\n"
-            "Обычно это забор крови из вены или мазок из щеки. Дальше лаборатория "
-            "анализирует ДНК, и через некоторое время вы получаете понятный отчёт.\n\n"
-            "Время выполнения и формат отчёта зависят от конкретного теста."
+            "Как проходит анализ?\n\n"
+            "Обычно это кровь из вены или мазок из щеки. Дальше лаборатория анализирует ДНК, "
+            "и вы получаете отчёт.\n\n"
+            "Сроки и формат отчёта зависят от конкретного теста."
         )
         keyboard = build_plan_main_keyboard()
-    if text and keyboard:
-        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
 
+    if text and keyboard:
+        await query.edit_message_text(text, reply_markup=keyboard)
+
+
+# -------------------------
+# Контакты (Conversation)
+# -------------------------
 
 CONTACT_NAME, CONTACT_PHONE, CONTACT_HOW, CONTACT_COMMENT = range(4)
 
 
 def build_contact_method_keyboard(lang: str, user) -> ReplyKeyboardMarkup:
-    rows = [["📞 Оставить номер телефона"]]
+    rows = [["Оставить номер телефона"]]
     username = getattr(user, "username", None) if user else None
     if username:
-        rows.append(["@ Использовать мой @username"])
-    rows.append(["✉️ Другая форма связи (email или т.п.)"])
+        rows.append(["Использовать мой @username"])
+    rows.append(["Другая форма связи (email и т.п.)"])
     rows.append([t("btn_back", lang), t("btn_cancel", lang)])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=True)
 
@@ -522,11 +554,7 @@ async def contact_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["contact"] = {}
     await update.message.reply_text(
         t("name_ask", lang),
-        reply_markup=ReplyKeyboardMarkup(
-            [[t("btn_cancel", lang)]],
-            resize_keyboard=True,
-            one_time_keyboard=True,
-        ),
+        reply_markup=ReplyKeyboardMarkup([[t("btn_cancel", lang)]], resize_keyboard=True, one_time_keyboard=True),
     )
     return CONTACT_NAME
 
@@ -538,11 +566,7 @@ async def contact_start_from_plan(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     await query.message.reply_text(
         t("name_ask", lang),
-        reply_markup=ReplyKeyboardMarkup(
-            [[t("btn_cancel", lang)]],
-            resize_keyboard=True,
-            one_time_keyboard=True,
-        ),
+        reply_markup=ReplyKeyboardMarkup([[t("btn_cancel", lang)]], resize_keyboard=True, one_time_keyboard=True),
     )
     return CONTACT_NAME
 
@@ -554,11 +578,7 @@ async def contact_start_from_doctor(update: Update, context: ContextTypes.DEFAUL
     await query.answer()
     await query.message.reply_text(
         t("name_ask", lang),
-        reply_markup=ReplyKeyboardMarkup(
-            [[t("btn_cancel", lang)]],
-            resize_keyboard=True,
-            one_time_keyboard=True,
-        ),
+        reply_markup=ReplyKeyboardMarkup([[t("btn_cancel", lang)]], resize_keyboard=True, one_time_keyboard=True),
     )
     return CONTACT_NAME
 
@@ -567,90 +587,64 @@ async def contact_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
     text = (update.message.text or "").strip()
     if is_cancel(text, lang):
-        await update.message.reply_text(
-            "Отменено. Возвращаю вас в главное меню.",
-            reply_markup=main_menu_keyboard(lang),
-        )
+        await update.message.reply_text("Отменено. Возвращаю вас в главное меню.", reply_markup=main_menu_keyboard(lang))
         return ConversationHandler.END
+
     context.user_data["contact"]["name"] = text
     kb = build_contact_method_keyboard(lang, update.effective_user)
-    await update.message.reply_text(
-        "Как с вами связаться?",
-        reply_markup=kb,
-    )
+    await update.message.reply_text("Как с вами связаться?", reply_markup=kb)
     return CONTACT_HOW
 
 
 async def contact_how(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
     text = (update.message.text or "").strip()
+
     if is_cancel(text, lang):
-        await update.message.reply_text(
-            "Отменено. Возвращаю вас в главное меню.",
-            reply_markup=main_menu_keyboard(lang),
-        )
+        await update.message.reply_text("Отменено. Возвращаю вас в главное меню.", reply_markup=main_menu_keyboard(lang))
         return ConversationHandler.END
+
     if is_back(text, lang):
         await update.message.reply_text(
             t("name_ask", lang),
-            reply_markup=ReplyKeyboardMarkup(
-                [[t("btn_cancel", lang)]],
-                resize_keyboard=True,
-                one_time_keyboard=True,
-            ),
+            reply_markup=ReplyKeyboardMarkup([[t("btn_cancel", lang)]], resize_keyboard=True, one_time_keyboard=True),
         )
         return CONTACT_NAME
-    if text == "📞 Оставить номер телефона":
+
+    if text == "Оставить номер телефона":
         context.user_data["contact"]["how"] = "Телефон"
         kb = ReplyKeyboardMarkup(
-            [
-                [KeyboardButton("📱 Отправить номер телефона", request_contact=True)],
-                [t("btn_back", lang), t("btn_cancel", lang)],
-            ],
+            [[KeyboardButton("Отправить номер телефона", request_contact=True)], [t("btn_back", lang), t("btn_cancel", lang)]],
             resize_keyboard=True,
             one_time_keyboard=True,
         )
-        await update.message.reply_text(
-            "Нажмите кнопку ниже, чтобы отправить номер телефона:",
-            reply_markup=kb,
-        )
+        await update.message.reply_text("Нажмите кнопку ниже, чтобы отправить номер телефона:", reply_markup=kb)
         return CONTACT_PHONE
-    if text == "@ Использовать мой @username":
+
+    if text == "Использовать мой @username":
         user = update.effective_user
         username = getattr(user, "username", None) if user else None
         if not username:
-            kb = build_contact_method_keyboard(lang, user)
-            await update.message.reply_text(
-                "У вас не установлен username в Telegram. Пожалуйста, выберите другой способ связи.",
-                reply_markup=kb,
-            )
+            await update.message.reply_text("У вас не установлен username в Telegram. Выберите другой способ связи.")
             return CONTACT_HOW
+
         context.user_data["contact"]["how"] = "Telegram username"
         context.user_data["contact"]["phone"] = f"@{username}"
         await update.message.reply_text(
             t("comment_ask", lang),
-            reply_markup=ReplyKeyboardMarkup(
-                [[t("btn_back", lang), t("btn_cancel", lang)]],
-                resize_keyboard=True,
-                one_time_keyboard=True,
-            ),
+            reply_markup=ReplyKeyboardMarkup([[t("btn_back", lang), t("btn_cancel", lang)]], resize_keyboard=True, one_time_keyboard=True),
         )
         return CONTACT_COMMENT
-    if text.startswith("✉️"):
+
+    if text.startswith("Другая форма связи"):
         context.user_data["contact"]["how"] = "Другая форма связи"
         await update.message.reply_text(
             "Напишите удобный способ связи (email или другой мессенджер):",
-            reply_markup=ReplyKeyboardMarkup(
-                [[t("btn_back", lang), t("btn_cancel", lang)]],
-                resize_keyboard=True,
-                one_time_keyboard=True,
-            ),
+            reply_markup=ReplyKeyboardMarkup([[t("btn_back", lang), t("btn_cancel", lang)]], resize_keyboard=True, one_time_keyboard=True),
         )
         return CONTACT_PHONE
-    await update.message.reply_text(
-        "Пожалуйста, выберите один из предложенных вариантов.",
-        reply_markup=build_contact_method_keyboard(lang, update.effective_user),
-    )
+
+    await update.message.reply_text("Пожалуйста, выберите один из предложенных вариантов.", reply_markup=build_contact_method_keyboard(lang, update.effective_user))
     return CONTACT_HOW
 
 
@@ -658,65 +652,52 @@ async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
     data = context.user_data.get("contact", {})
     how = data.get("how")
+
     if update.message.contact:
         phone_number = update.message.contact.phone_number
         context.user_data["contact"]["phone"] = phone_number
         if not how:
             context.user_data["contact"]["how"] = "Телефон"
+
         await update.message.reply_text(
             t("comment_ask", lang),
-            reply_markup=ReplyKeyboardMarkup(
-                [[t("btn_back", lang), t("btn_cancel", lang)]],
-                resize_keyboard=True,
-                one_time_keyboard=True,
-            ),
+            reply_markup=ReplyKeyboardMarkup([[t("btn_back", lang), t("btn_cancel", lang)]], resize_keyboard=True, one_time_keyboard=True),
         )
         return CONTACT_COMMENT
+
     text = (update.message.text or "").strip()
+
     if is_cancel(text, lang):
-        await update.message.reply_text(
-            "Отменено. Возвращаю вас в главное меню.",
-            reply_markup=main_menu_keyboard(lang),
-        )
+        await update.message.reply_text("Отменено. Возвращаю вас в главное меню.", reply_markup=main_menu_keyboard(lang))
         return ConversationHandler.END
+
     if is_back(text, lang):
         kb = build_contact_method_keyboard(lang, update.effective_user)
-        await update.message.reply_text(
-            "Как с вами связаться?",
-            reply_markup=kb,
-        )
+        await update.message.reply_text("Как с вами связаться?", reply_markup=kb)
         return CONTACT_HOW
+
     if how == "Другая форма связи":
         context.user_data["contact"]["phone"] = text
         await update.message.reply_text(
             t("comment_ask", lang),
-            reply_markup=ReplyKeyboardMarkup(
-                [[t("btn_back", lang), t("btn_cancel", lang)]],
-                resize_keyboard=True,
-                one_time_keyboard=True,
-            ),
+            reply_markup=ReplyKeyboardMarkup([[t("btn_back", lang), t("btn_cancel", lang)]], resize_keyboard=True, one_time_keyboard=True),
         )
         return CONTACT_COMMENT
+
     if not is_valid_phone(text):
         await update.message.reply_text(
             t("phone_invalid", lang),
-            reply_markup=ReplyKeyboardMarkup(
-                [[t("btn_back", lang), t("btn_cancel", lang)]],
-                resize_keyboard=True,
-                one_time_keyboard=True,
-            ),
+            reply_markup=ReplyKeyboardMarkup([[t("btn_back", lang), t("btn_cancel", lang)]], resize_keyboard=True, one_time_keyboard=True),
         )
         return CONTACT_PHONE
+
     context.user_data["contact"]["phone"] = text
     if not how:
         context.user_data["contact"]["how"] = "Телефон"
+
     await update.message.reply_text(
         t("comment_ask", lang),
-        reply_markup=ReplyKeyboardMarkup(
-            [[t("btn_back", lang), t("btn_cancel", lang)]],
-            resize_keyboard=True,
-            one_time_keyboard=True,
-        ),
+        reply_markup=ReplyKeyboardMarkup([[t("btn_back", lang), t("btn_cancel", lang)]], resize_keyboard=True, one_time_keyboard=True),
     )
     return CONTACT_COMMENT
 
@@ -724,30 +705,30 @@ async def contact_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def contact_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
     text = (update.message.text or "").strip()
+
     if is_cancel(text, lang):
-        await update.message.reply_text(
-            "Отменено. Возвращаю вас в главное меню.",
-            reply_markup=main_menu_keyboard(lang),
-        )
+        await update.message.reply_text("Отменено. Возвращаю вас в главное меню.", reply_markup=main_menu_keyboard(lang))
         return ConversationHandler.END
+
     if is_back(text, lang):
         kb = build_contact_method_keyboard(lang, update.effective_user)
-        await update.message.reply_text(
-            "Как с вами связаться?",
-            reply_markup=kb,
-        )
+        await update.message.reply_text("Как с вами связаться?", reply_markup=kb)
         return CONTACT_HOW
+
     context.user_data["contact"]["comment"] = text
+
     data = context.user_data.get("contact", {})
     name = data.get("name", "-")
     phone = data.get("phone", "-")
     how = data.get("how", "-")
     comment = data.get("comment", "-")
     source = data.get("source", "-")
+
     user = update.effective_user
     user_id = user.id if user else "–"
     username = getattr(user, "username", None)
     full_name = getattr(user, "full_name", None)
+
     owner_lines = [
         t("lead_sent_owner_title", lang),
         "",
@@ -756,26 +737,28 @@ async def contact_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Имя в Telegram: {full_name}" if full_name else "",
         "",
         f"Имя (из заявки): {name}",
-        f"Телефон: {phone}",
+        f"Контакт: {phone}",
         f"Как связаться удобнее: {how}",
         f"Комментарий: {comment}",
         f"Источник: {source}",
     ]
     owner_text = "\n".join([ln for ln in owner_lines if ln])
+
     if OWNER_CHAT_ID:
         try:
             await context.bot.send_message(chat_id=OWNER_CHAT_ID, text=owner_text)
         except Exception as e:
             logger.error(f"Failed to send lead to owner: {e}")
-    await update.message.reply_text(
-        t("contact_done_user", lang),
-        reply_markup=main_menu_keyboard(lang),
-    )
+
+    await update.message.reply_text(t("contact_done_user", lang), reply_markup=main_menu_keyboard(lang))
     return ConversationHandler.END
 
 
-PatientFaqItem = Dict[str, Any]
+# -------------------------
+# FAQ (пациенты)
+# -------------------------
 
+PatientFaqItem = Dict[str, Any]
 
 PATIENT_FAQ_LIST: List[PatientFaqItem] = [
     {
@@ -803,31 +786,6 @@ PATIENT_FAQ_LIST: List[PatientFaqItem] = [
         ),
     },
     {
-        "id": "difference_from_other_tests",
-        "title": "Чем скрининг на носительство отличается от других генетических тестов?",
-        "answer": (
-            "Скрининг на носительство фокусируется именно на выявлении носительства "
-            "ряда конкретных наследственных заболеваний. Он не ставит диагноз, "
-            "а оценивает риск.\n\n"
-            "Он отличается от, например, тестов по фармакогенетике, онкогенетике "
-            "или \"генетических паспортов\", у которых другая цель и другой набор генов."
-        ),
-    },
-    {
-        "id": "what_if_both_carriers",
-        "title": "Что будет, если у обоих супругов найдут совпадающее носительство?",
-        "answer": (
-            "Если у обоих будущих родителей выявлено носительство одного и того же заболевания, "
-            "то в каждой беременности есть риск рождения ребёнка с этим заболеванием.\n\n"
-            "Обычно говорят о вероятностях:\n"
-            "• 25% — ребёнок с заболеванием;\n"
-            "• 50% — ребёнок здоров, но тоже носитель;\n"
-            "• 25% — ребёнок без выявленной мутации.\n\n"
-            "При этом у пары появляется возможность заранее обсудить варианты с врачом-генетиком: "
-            "от ЭКО с преимплантационной диагностикой до других решений."
-        ),
-    },
-    {
         "id": "when_to_do",
         "title": "Когда лучше проходить скрининг на носительство?",
         "answer": (
@@ -838,13 +796,9 @@ PATIENT_FAQ_LIST: List[PatientFaqItem] = [
     },
 ]
 
-
 def build_patient_faq_keyboard() -> InlineKeyboardMarkup:
-    keyboard = [
-        [InlineKeyboardButton(item["title"], callback_data=f"faq_{item['id']}")]
-        for item in PATIENT_FAQ_LIST
-    ]
-    keyboard.append([InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="faq_back")])
+    keyboard = [[InlineKeyboardButton(item["title"], callback_data=f"faq_{item['id']}")] for item in PATIENT_FAQ_LIST]
+    keyboard.append([InlineKeyboardButton("В главное меню", callback_data="faq_back")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -864,20 +818,19 @@ async def faq_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "faq_back":
         await query.edit_message_text("Возвращаю в главное меню…")
         return await show_main_menu(update, context)
+
     faq_id = data.replace("faq_", "", 1)
     item = next((x for x in PATIENT_FAQ_LIST if x["id"] == faq_id), None)
     if not item:
-        await query.edit_message_text(
-            "Выберите вопрос из меню ниже.",
-            reply_markup=build_patient_faq_keyboard(),
-        )
+        await query.edit_message_text("Выберите вопрос из меню ниже.", reply_markup=build_patient_faq_keyboard())
         return
-    await query.edit_message_text(
-        item["answer"],
-        reply_markup=build_patient_faq_keyboard(),
-        parse_mode="Markdown",
-    )
 
+    await query.edit_message_text(item["answer"], reply_markup=build_patient_faq_keyboard())
+
+
+# -------------------------
+# Меню для врачей
+# -------------------------
 
 DOCTOR_MENU_SCREENING = "doctor_menu_screening"
 DOCTOR_MENU_HOW_TO_RECOMMEND = "doctor_menu_how_to_recommend"
@@ -893,9 +846,9 @@ def build_doctor_main_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("Как объяснить пациенту, зачем это нужно?", callback_data=DOCTOR_MENU_HOW_TO_RECOMMEND)],
         [InlineKeyboardButton("Какой тест выбрать в практике?", callback_data=DOCTOR_MENU_WHICH_TEST)],
         [InlineKeyboardButton("Каким пациентам особенно важно предложить тест?", callback_data=DOCTOR_MENU_PATIENT_TYPES)],
-        [InlineKeyboardButton("Оставить заявку на сотрудничество", callback_data=DOCTOR_MENU_CONTACT)],
+        [InlineKeyboardButton("Оставить контакты", callback_data="contact_from_doctor")],
         [InlineKeyboardButton("FAQ для врачей", callback_data=DOCTOR_MENU_FAQ)],
-        [InlineKeyboardButton("🔙 В главное меню", callback_data="doc_back_main")],
+        [InlineKeyboardButton("В главное меню", callback_data="doc_back_main")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -903,135 +856,106 @@ def build_doctor_main_keyboard() -> InlineKeyboardMarkup:
 async def doctor_menu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = build_doctor_main_keyboard()
     await update.message.reply_text(
-        "👨‍⚕️ *Я врач*\n\nВыберите, что вам интересно:",
+        "Я врач\n\nВыберите, что вам интересно:",
         reply_markup=keyboard,
-        parse_mode="Markdown",
     )
 
 
 async def doctor_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
+
     if data == "doc_back_main":
         await query.edit_message_text("Возвращаю в главное меню…")
         return await show_main_menu(update, context)
+
     text = ""
     keyboard = None
+
     if data == DOCTOR_MENU_SCREENING:
         text = (
-            "👨‍⚕️ *Скрининг на носительство для практикующего врача*\n\n"
-            "Это инструмент, который позволяет заранее выявить пары с повышенным риском "
+            "Скрининг на носительство для практикующего врача\n\n"
+            "Инструмент, который помогает заранее выявить пары с повышенным риском "
             "рождения ребёнка с наследственным заболеванием.\n\n"
-            "Для врача это дополнительный ресурс:\n"
-            "• для осознанного планирования беременности вместе с пациентами;\n"
-            "• для снижения числа неожиданных тяжёлых случаев;\n"
-            "• для повышения качества консультирования."
+            "Для врача это может быть полезно:\n"
+            "• как часть планирования беременности;\n"
+            "• чтобы экономить время на объяснениях;\n"
+            "• чтобы снижать число неожиданных тяжёлых случаев."
         )
         keyboard = build_doctor_main_keyboard()
+
     elif data == DOCTOR_MENU_HOW_TO_RECOMMEND:
         text = (
-            "🗣 *Как объяснить пациенту, зачем это нужно?*\n\n"
-            "Часто пациенты никогда не слышали о скрининге на носительство. "
-            "Работают простые формулировки:\n\n"
-            "• «Это анализ, который помогает заранее узнать риски наследственных заболеваний у детей»;\n"
-            "• «Он не ставит диагноз, а отвечает на вопрос: “Есть ли у пары скрытый риск?”»;\n"
-            "• «Если риск есть, у нас появляется больше вариантов, что делать дальше».\n\n"
-            "Важно говорить простым языком, без избыточной терминологии."
+            "Как объяснить пациенту, зачем это нужно?\n\n"
+            "Часто помогают простые формулировки:\n"
+            "• «Это анализ, который помогает заранее понять риски наследственных заболеваний у детей»\n"
+            "• «Он не ставит диагноз — он отвечает на вопрос: есть ли у пары скрытый риск»\n"
+            "• «Если риск есть, появляется выбор вариантов, что делать дальше»"
         )
         keyboard = build_doctor_main_keyboard()
+
     elif data == DOCTOR_MENU_WHICH_TEST:
         text = (
-            "🧾 *Какой тест выбрать в практике?*\n\n"
-            "Вариантов тестов много: от таргетных панелей до расширенных исследований.\n\n"
-            "Часто имеет смысл исходить из:\n"
-            "• национальных/этнических особенностей пары;\n"
+            "Какой тест выбрать в практике?\n\n"
+            "Обычно отталкиваются от:\n"
             "• семейного анамнеза;\n"
-            "• выбранной тактики планирования беременности.\n\n"
-            "Оптимально — обсудить с лабораторией несколько рабочих сценариев, "
-            "чтобы врач заранее понимал, в каких случаях какой тест рекомендовать."
+            "• этнических особенностей;\n"
+            "• тактики планирования беременности.\n\n"
+            "Если нужно — можно оставить контакты, чтобы обсудить сценарии под вашу практику."
         )
         keyboard = build_doctor_main_keyboard()
+
     elif data == DOCTOR_MENU_PATIENT_TYPES:
         text = (
-            "👥 *Каким пациентам особенно важно предложить тест?*\n\n"
-            "В практике часто выделяют группы:\n"
-            "• пары с отягощённым семейным анамнезом по наследственным заболеваниям;\n"
-            "• супружеские пары, состоящие в родстве;\n"
-            "• пациенты из популяций с известной высокой частотой отдельных заболеваний;\n"
-            "• пары, уже столкнувшиеся с неблагоприятным исходом беременности.\n\n"
-            "Но предлагать скрининг можно и более широкой группе — как часть подготовки к беременности."
+            "Каким пациентам особенно важно предложить тест?\n\n"
+            "Часто выделяют группы:\n"
+            "• семейный анамнез по наследственным заболеваниям;\n"
+            "• близкородственные браки;\n"
+            "• неблагоприятные исходы беременности в прошлом;\n"
+            "• популяции с высокой частотой отдельных заболеваний.\n\n"
+            "Но скрининг может быть и частью обычной подготовки к беременности."
         )
         keyboard = build_doctor_main_keyboard()
+
     elif data == DOCTOR_MENU_CONTACT:
-        text = (
-            "📨 *Оставить заявку на сотрудничество*\n\n"
-            "Если вы хотите:\n"
-            "• получать понятные материалы для пациентов;\n"
-            "• подобрать оптимальные тесты под вашу практику;\n"
-            "• обсудить индивидуальные схемы взаимодействия с лабораторией,\n\n"
-            "— вы можете оставить свои контакты через раздел «Записаться / Оставить контакты» в главном меню.\n\n"
-            "Мы свяжемся с вами и обсудим детали."
-        )
+        text = "Оставить контакты можно в главном меню."
         keyboard = build_doctor_main_keyboard()
+
     elif data == DOCTOR_MENU_FAQ:
         return await doctor_faq_menu_entry(update, context)
+
     if text and keyboard:
-        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        await query.edit_message_text(text, reply_markup=keyboard)
 
 
 DoctorFaqItem = Dict[str, Any]
-
 
 DOCTOR_FAQ_LIST: List[DoctorFaqItem] = [
     {
         "id": "how_to_start",
         "title": "С чего начать внедрение скрининга на носительство в практике?",
         "answer": (
-            "1. Определите, в каких группах пациентов скрининг будет наиболее полезен.\n"
-            "2. Обсудите с лабораторией доступные панели и форматы.\n"
-            "3. Подготовьте короткие объяснения для пациентов (1–2 минуты).\n"
-            "4. Включите обсуждение генетических рисков в стандартные приёмы до беременности."
-        ),
-    },
-    {
-        "id": "how_to_explain_risk",
-        "title": "Как простыми словами объяснить риск пациенту?",
-        "answer": (
-            "Используйте аналогии и простые формулировки. Например:\n"
-            "«У большинства людей есть “скрытые” генетические особенности. "
-            "Обычно они никак не проявляются. Но если у пары совпадают такие особенности, "
-            "может родиться ребёнок с заболеванием. Скрининг помогает заранее узнать, есть ли такой риск»."
+            "1) Определить, в каких группах пациентов это наиболее уместно.\n"
+            "2) Понять, какие панели вы используете как базовые.\n"
+            "3) Подготовить 2–3 простые фразы для объяснения пациентам.\n"
+            "4) При необходимости — иметь «материал для чтения», чтобы пациент пришёл на повторный разговор подготовленным."
         ),
     },
     {
         "id": "what_if_patient_afraid",
         "title": "Что делать, если пациент боится анализа?",
         "answer": (
-            "Важно признать его чувства и подчеркнуть, что скрининг — это именно инструмент для выбора, а не приговор.\n\n"
-            "Можно сказать:\n"
-            "«Этот анализ не говорит, что с вашим ребёнком обязательно что-то случится. "
-            "Он помогает заранее понять, есть ли скрытый риск, и если да — мы сможем вместе решить, как с этим быть»."
-        ),
-    },
-    {
-        "id": "how_to_discuss_positive_result",
-        "title": "Как обсуждать с пациентом высокий риск или совпадение носительства?",
-        "answer": (
-            "1. Спокойно объяснить, о каком заболевании идёт речь и как оно протекает.\n"
-            "2. Обсудить варианты: от дополнительных обследований до ЭКО с ПГТ.\n"
-            "3. Подчеркнуть, что у пары есть время и пространство для взвешенного решения.\n"
-            "4. При необходимости — направить к профильным специалистам."
+            "Обычно помогает спокойная рамка:\n"
+            "«Этот анализ не говорит, что обязательно будет проблема. Он помогает понять, есть ли скрытый риск — "
+            "и если да, у нас появляется выбор, что делать дальше»."
         ),
     },
 ]
 
 
 def build_doctor_faq_keyboard() -> InlineKeyboardMarkup:
-    keyboard = [
-        [InlineKeyboardButton(item["title"], callback_data=f"dfaq_{item['id']}")]
-        for item in DOCTOR_FAQ_LIST
-    ]
-    keyboard.append([InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="dfaq_back")])
+    keyboard = [[InlineKeyboardButton(item["title"], callback_data=f"dfaq_{item['id']}")] for item in DOCTOR_FAQ_LIST]
+    keyboard.append([InlineKeyboardButton("В главное меню", callback_data="dfaq_back")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -1052,20 +976,19 @@ async def doctor_faq_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "dfaq_back":
         await query.edit_message_text("Возвращаю в главное меню…")
         return await show_main_menu(update, context)
+
     faq_id = data.replace("dfaq_", "", 1)
     item = next((x for x in DOCTOR_FAQ_LIST if x["id"] == faq_id), None)
     if not item:
-        await query.edit_message_text(
-            "Выберите вопрос из меню ниже.",
-            reply_markup=build_doctor_faq_keyboard(),
-        )
+        await query.edit_message_text("Выберите вопрос из меню ниже.", reply_markup=build_doctor_faq_keyboard())
         return
-    await query.edit_message_text(
-        item["answer"],
-        reply_markup=build_doctor_faq_keyboard(),
-        parse_mode="Markdown",
-    )
 
+    await query.edit_message_text(item["answer"], reply_markup=build_doctor_faq_keyboard())
+
+
+# -------------------------
+# Ответ владельца пользователю (через reply)
+# -------------------------
 
 async def owner_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or update.effective_user.id != OWNER_CHAT_ID:
@@ -1075,10 +998,12 @@ async def owner_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if not msg.reply_to_message or not msg.reply_to_message.text:
         return
+
     original_text = msg.reply_to_message.text
     match = re.search(r"User ID:\s*(\d+)", original_text)
     if not match:
         return
+
     user_id = int(match.group(1))
     try:
         await context.bot.send_message(chat_id=user_id, text=msg.text)
@@ -1092,9 +1017,9 @@ def main():
 
     app = Application.builder().token(BOT_TOKEN).build()
 
+    # Контактная форма — вход по кнопке главного меню + по inline из plan/doctor
     from re import escape
     pattern = rf"^{escape(t('btn_contact', 'ru'))}$|^{escape(t('btn_contact', 'en'))}$"
-
     contact_conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(pattern), contact_start),
@@ -1107,15 +1032,14 @@ def main():
             CONTACT_HOW: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_how)],
             CONTACT_COMMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_comment)],
         },
-        fallbacks=[
-            MessageHandler(filters.Regex(r"^❌ Отмена$|^❌ Cancel$"), contact_comment),
-        ],
+        fallbacks=[MessageHandler(filters.Regex(r"^❌ Отмена$|^❌ Cancel$"), contact_comment)],
         allow_reentry=True,
     )
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(contact_conv)
 
+    # Владелец отвечает реплаем на сообщение с User ID -> бот пересылает пользователю
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND & filters.Chat(OWNER_CHAT_ID),
@@ -1123,15 +1047,14 @@ def main():
         )
     )
 
-    app.add_handler(
-        MessageHandler(
-            filters.CONTACT & ~filters.Chat(OWNER_CHAT_ID),
-            free_contact_phone_handler,
-        )
-    )
+    # Контакт из inline режима вопроса (когда пользователь нажал request_contact)
+    app.add_handler(MessageHandler(filters.CONTACT & ~filters.Chat(OWNER_CHAT_ID), free_contact_phone_handler))
     app.add_handler(CallbackQueryHandler(free_contact_callback, pattern=r"^free_contact_"))
 
+    # Главное меню + авто-распознавание вопроса
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu))
+
+    # Inline-меню
     app.add_handler(CallbackQueryHandler(plan_callback, pattern=r"^plan_"))
     app.add_handler(CallbackQueryHandler(doctor_menu_callback, pattern=r"^(doctor_menu_|doc_back_)"))
     app.add_handler(CallbackQueryHandler(faq_answer, pattern=r"^faq_"))
