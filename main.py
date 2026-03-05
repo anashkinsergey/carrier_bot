@@ -1,4 +1,3 @@
-
 import os
 import re
 import logging
@@ -36,14 +35,16 @@ OWNER_CHAT_ID = int(os.environ.get("OWNER_CHAT_ID", "0"))
 def t(label: str, lang: str = "ru") -> str:
     texts = {
         "greeting": {
-    "ru": (
-        "Здесь можно спокойно разобраться, есть ли в вашей ситуации вопрос по генетике.\n\n"
-        "Можно задать свой вопрос — коротко, как получается.\n"
-        "Можно просто посмотреть варианты.\n"
-        "Можно закрыть тему и вернуться позже.\n\n"
-        "Важно: это не консультация и не запись к врачу."
-    ),
-},
+            "ru": (
+                "Здесь можно спокойно разобраться, есть ли в вашей ситуации вопрос по генетике.\n\n"
+                "Любой вопрос здесь уместен — даже если он кажется простым или «глупым».\n\n"
+                "Можно задать свой вопрос — коротко или как получится.\n"
+                "Можно просто посмотреть варианты.\n"
+                "Можно закрыть тему и вернуться позже.\n\n"
+                "Если не знаете, с чего начать — напишите 2–3 предложения о вашей ситуации как получится.\n\n"
+                "Важно: это не консультация и не запись к врачу."
+            ),
+        },
         "main_menu_title": {"ru": "Выберите раздел:", "en": "Choose a section:"},
         "btn_plan": {"ru": "👶 Планируем / ждём ребёнка", "en": "👶 Planning / expecting a baby"},
         "btn_doctor": {"ru": "👨‍⚕️ Я врач", "en": "👨‍⚕️ I am a doctor"},
@@ -56,7 +57,8 @@ def t(label: str, lang: str = "ru") -> str:
         "free_q_button_explain": {
             "ru": (
                 "Можете просто написать здесь свой вопрос в одном или нескольких сообщениях.\n\n"
-                "Это можно сделать без телефона и других контактов — я всё равно передам ваши сообщения врачу."
+                "Это можно сделать без телефона и других контактов — я всё равно передам ваши сообщения врачу.\n\n"
+                "Если не знаете, с чего начать — напишите 2–3 предложения о вашей ситуации как получится."
             ),
             "en": (
                 "You can just type your question here in one or several messages.\n\n"
@@ -207,6 +209,39 @@ def is_valid_phone(phone: str) -> bool:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
+
+    start_param = (context.args[0] if context.args else "").strip().lower()
+
+    # Deeplink: question -> сразу режим вопроса (free_mode)
+    if start_param in ("q", "question", "ask"):
+        context.user_data["free_mode"] = True
+        await update.message.reply_text(
+            t("greeting", lang),
+            reply_markup=main_menu_keyboard(lang, free_mode=True),
+        )
+        await update.message.reply_text(
+            "Напишите вопрос одним или несколькими сообщениями — как получается.",
+            reply_markup=main_menu_keyboard(lang, free_mode=True),
+        )
+        return
+
+    # Deeplink: plan -> сразу в раздел планирования
+    if start_param in ("plan", "baby"):
+        await update.message.reply_text(
+            t("greeting", lang),
+            reply_markup=main_menu_keyboard(lang),
+        )
+        return await plan_start(update, context)
+
+    # Deeplink: doctor -> сразу в раздел врача
+    if start_param in ("doc", "doctor"):
+        await update.message.reply_text(
+            t("greeting", lang),
+            reply_markup=main_menu_keyboard(lang),
+        )
+        return await doctor_menu_start(update, context)
+
+    # Default
     await update.message.reply_text(
         t("greeting", lang),
         reply_markup=main_menu_keyboard(lang),
@@ -236,8 +271,10 @@ async def forward_free_message(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     if update.message.from_user and update.message.from_user.is_bot:
         return
+
     lang = get_lang(update)
     text = update.message.text or ""
+
     lines_out = [
         t("free_q_owner_title", lang),
         "",
@@ -250,10 +287,12 @@ async def forward_free_message(update: Update, context: ContextTypes.DEFAULT_TYP
     ]
     msg_text = "\n".join([ln for ln in lines_out if ln != ""])
     await context.bot.send_message(chat_id=OWNER_CHAT_ID, text=msg_text)
+
     await update.message.reply_text(
         t("free_q_user", lang),
         reply_markup=main_menu_keyboard(lang, free_mode=True),
     )
+
     contact_keyboard = InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("📱 Оставить номер телефона", callback_data="free_contact_phone")],
@@ -261,7 +300,7 @@ async def forward_free_message(update: Update, context: ContextTypes.DEFAULT_TYP
         ]
     )
     await update.message.reply_text(
-        "Как оставить контакт?",
+        "Если захотите, можно оставить контакт (не обязательно):",
         reply_markup=contact_keyboard,
     )
 
@@ -271,6 +310,7 @@ async def free_contact_callback(update: Update, context: ContextTypes.DEFAULT_TY
     data = query.data
     user = query.from_user
     lang = get_lang(update)
+
     if data == "free_contact_phone":
         kb = ReplyKeyboardMarkup(
             [[KeyboardButton("📱 Отправить номер телефона", request_contact=True)]],
@@ -283,6 +323,7 @@ async def free_contact_callback(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup=kb,
         )
         return
+
     if data == "free_contact_username":
         username = getattr(user, "username", None)
         if not username:
@@ -335,7 +376,9 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_lang(update)
     if update.effective_user and update.effective_user.id == OWNER_CHAT_ID:
         return
+
     text = (update.message.text or "").strip()
+
     if text == t("btn_plan", lang):
         return await plan_start(update, context)
     if text == t("btn_doctor", lang):
@@ -353,12 +396,20 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu_keyboard(lang),
         )
         return
+
+    # Если уже режим свободного вопроса — пересылаем
     if context.user_data.get("free_mode"):
         return await forward_free_message(update, context)
+
+    # Ключевое улучшение:
+    # если человек просто написал текст, не нажимая кнопку — считаем это вопросом
+    context.user_data["free_mode"] = True
     await update.message.reply_text(
-        t("unknown_command", lang),
-        reply_markup=main_menu_keyboard(lang),
+        "Похоже, вы хотите задать вопрос.\n\n"
+        "Напишите его одним или несколькими сообщениями — как получается.",
+        reply_markup=main_menu_keyboard(lang, free_mode=True),
     )
+    return await forward_free_message(update, context)
 
 
 PLAN_MENU = "plan_menu"
@@ -1038,9 +1089,12 @@ async def owner_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     if not BOT_TOKEN:
         raise RuntimeError("Не задан BOT_TOKEN!")
+
     app = Application.builder().token(BOT_TOKEN).build()
+
     from re import escape
     pattern = rf"^{escape(t('btn_contact', 'ru'))}$|^{escape(t('btn_contact', 'en'))}$"
+
     contact_conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(pattern), contact_start),
@@ -1058,14 +1112,17 @@ def main():
         ],
         allow_reentry=True,
     )
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(contact_conv)
+
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND & filters.Chat(OWNER_CHAT_ID),
             owner_auto_reply,
         )
     )
+
     app.add_handler(
         MessageHandler(
             filters.CONTACT & ~filters.Chat(OWNER_CHAT_ID),
@@ -1073,11 +1130,13 @@ def main():
         )
     )
     app.add_handler(CallbackQueryHandler(free_contact_callback, pattern=r"^free_contact_"))
+
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu))
     app.add_handler(CallbackQueryHandler(plan_callback, pattern=r"^plan_"))
     app.add_handler(CallbackQueryHandler(doctor_menu_callback, pattern=r"^(doctor_menu_|doc_back_)"))
     app.add_handler(CallbackQueryHandler(faq_answer, pattern=r"^faq_"))
     app.add_handler(CallbackQueryHandler(doctor_faq_answer, pattern=r"^dfaq_"))
+
     app.run_polling()
 
 
