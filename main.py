@@ -166,14 +166,13 @@ def get_lang(update: Update) -> str:
 
 def main_menu_keyboard(lang: str, free_mode: bool = False) -> ReplyKeyboardMarkup:
     rows = [
-    [t("btn_plan", lang)],
-    [t("btn_family", lang)],
-    [t("btn_self", lang)],
-    [t("btn_not_sure", lang)],
-    [t("btn_free_question", lang)],
-    [t("btn_faq", lang)],
-    [t("btn_doctor", lang)],
-]
+        [t("btn_plan", lang)],
+        [t("btn_family", lang)],
+        [t("btn_self", lang)],
+        [t("btn_not_sure", lang)],
+        [t("btn_free_question", lang), t("btn_faq", lang)],
+        [t("btn_doctor", lang)],
+    ]
     if free_mode:
         rows.append([t("btn_end_free", lang)])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
