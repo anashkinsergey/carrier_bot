@@ -43,27 +43,26 @@ def deeplink(payload: str) -> str:
 def t(label: str, lang: str = "ru") -> str:
     texts = {
         "greeting": {
-    "ru": (
-        "Здесь можно спокойно разобраться, касается ли вас тема генетики.\n\n"
-        "Без медицинских заумностей и без необходимости сразу что-то сдавать.\n\n"
-        "Обычно начинают с простого:\n"
-        "— «это вообще про меня или нет?»\n\n"
-        "Если откликается — можно выбрать свою ситуацию ниже\n"
-        "или просто написать, как есть."
-    ),
+            "ru": (
+                "Здесь можно спокойно разобраться, касается ли вас тема генетики.\n\n"
+                "Без медицинских заумностей и без необходимости сразу что-то сдавать.\n\n"
+                "Обычно начинают с простого:\n"
+                "— «это вообще про меня или нет?»\n\n"
+                "Если откликается — можно выбрать свою ситуацию ниже\n"
+                "или просто написать, как есть."
+            ),
             "en": (
-                "Here you can calmly understand whether genetics is relevant to your situation.\n\n"
-                "Any question is welcome — even if it seems simple.\n\n"
-                "You can ask your question — short or however it comes out.\n"
-                "You can just browse options.\n"
-                "You can close the topic and return later.\n\n"
-                "If you don’t know where to start — write 2–3 sentences about your situation.\n\n"
-                "Important: this is not a medical consultation and not an appointment booking."
+                "Here you can calmly check whether genetics is relevant to your situation.\n\n"
+                "No medical jargon and no need to do anything right away.\n\n"
+                "People usually start with a simple question:\n"
+                "— “Is this about me at all?”\n\n"
+                "If this feels relevant, choose the closest situation below\n"
+                "or write it in your own words."
             ),
         },
-        "main_menu_title": {"ru": "Выберите раздел:", "en": "Choose a section:"},
+        "main_menu_title": {"ru": "Выберите, что ближе:", "en": "Choose what fits best:"},
 
-                # Кнопки главного меню
+        # Кнопки главного меню
         "btn_plan": {"ru": "👶 Планируем / ждём ребёнка", "en": "👶 Planning / expecting a baby"},
         "btn_family": {"ru": "🧬 Было что-то в семье", "en": "🧬 Family history"},
         "btn_self": {"ru": "🤔 Просто хочу понять про себя", "en": "🤔 Just exploring"},
@@ -77,12 +76,14 @@ def t(label: str, lang: str = "ru") -> str:
         # Подсказки режима "свободного вопроса"
         "free_q_button_explain": {
             "ru": (
-                "Напишите здесь свой вопрос (одним или несколькими сообщениями) — как получается.\n\n"
+                "Напишите здесь свой вопрос одним или несколькими сообщениями — как получается.\n\n"
+                "Не нужно формулировать идеально. Можно начать с одной фразы.\n\n"
                 "Контакты оставлять не обязательно.\n"
                 "Если захотите — сможете оставить телефон или @username после отправки вопроса."
             ),
             "en": (
-                "Type your question here (one or several messages) — however it comes out.\n\n"
+                "Type your question here in one or several messages — however it comes out.\n\n"
+                "No need to phrase it perfectly. You can start with one sentence.\n\n"
                 "Leaving contacts is optional.\n"
                 "If you want, you can leave a phone or @username after sending the question."
             ),
@@ -97,8 +98,8 @@ def t(label: str, lang: str = "ru") -> str:
         },
         "free_q_owner_title": {"ru": "Новое сообщение в боте (без заявки)", "en": "New bot message (no lead form)"},
         "unknown_command": {
-            "ru": "Пока не знаю, что делать с этим. Используйте меню ниже.",
-            "en": "I don’t know what to do with that. Use the menu below.",
+            "ru": "Не совсем понял. Лучше выберите один из вариантов ниже или напишите вопрос своими словами.",
+            "en": "I didn’t quite understand. Please choose an option below or write your question in your own words.",
         },
 
         # Контакты / форма
@@ -398,35 +399,49 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == t("btn_plan", lang):
         return await plan_start(update, context)
-        
+
     if text == t("btn_family", lang):
+        context.user_data["free_mode"] = True
         await update.message.reply_text(
             "Это как раз та ситуация, где имеет смысл спокойно разобраться.\n\n"
             "Но не обязательно сразу что-то делать.\n\n"
             "Сначала важно понять:\n"
-            "это вообще влияет на вас или нет.",
-            reply_markup=main_menu_keyboard(lang),
+            "то, что было в семье, вообще влияет на вас или нет.\n\n"
+            "Можно начать прямо здесь.\n\n"
+            "Напишите одним сообщением, как получится:\n"
+            "что именно было в семье и у кого.\n\n"
+            "Без медицинских формулировок. Я передам сообщение Сергею — он ответит лично.",
+            reply_markup=main_menu_keyboard(lang, free_mode=True),
         )
         return
 
     if text == t("btn_self", lang):
+        context.user_data["free_mode"] = True
         await update.message.reply_text(
             "Это самая частая точка входа.\n\n"
             "Нет конкретной проблемы — просто хочется понять:\n"
             "«а вдруг это всё-таки про меня?»\n\n"
             "Здесь не нужно разбираться во всём.\n"
-            "Достаточно понять, есть ли вообще вопрос.",
-            reply_markup=main_menu_keyboard(lang),
+            "Достаточно начать с одной фразы.\n\n"
+            "Можно написать прямо здесь:\n"
+            "«Хочу понять, касается ли меня тема генетики».\n\n"
+            "Я передам сообщение Сергею — он ответит лично.",
+            reply_markup=main_menu_keyboard(lang, free_mode=True),
         )
         return
 
     if text == t("btn_not_sure", lang):
+        context.user_data["free_mode"] = True
         await update.message.reply_text(
             "Это нормальная точка.\n\n"
             "Большинство людей начинают именно с этого:\n"
             "непонятно, нужно ли вообще в это погружаться.\n\n"
-            "Можно просто посмотреть и спокойно решить, есть ли здесь вопрос.",
-            reply_markup=main_menu_keyboard(lang),
+            "Можно не решать сейчас.\n"
+            "Можно просто задать самый общий вопрос.\n\n"
+            "Напишите прямо здесь, как есть:\n"
+            "«Я пока не понимаю, зачем мне это, но хочу разобраться».\n\n"
+            "Я передам сообщение Сергею — он ответит лично.",
+            reply_markup=main_menu_keyboard(lang, free_mode=True),
         )
         return
 
