@@ -63,8 +63,11 @@ def t(label: str, lang: str = "ru") -> str:
         },
         "main_menu_title": {"ru": "Выберите раздел:", "en": "Choose a section:"},
 
-        # Кнопки главного меню
+                # Кнопки главного меню
         "btn_plan": {"ru": "👶 Планируем / ждём ребёнка", "en": "👶 Planning / expecting a baby"},
+        "btn_family": {"ru": "🧬 Было что-то в семье", "en": "🧬 Family history"},
+        "btn_self": {"ru": "🤔 Просто хочу понять про себя", "en": "🤔 Just exploring"},
+        "btn_not_sure": {"ru": "🤷 Пока не понимаю, зачем это", "en": "🤷 Not sure yet"},
         "btn_doctor": {"ru": "👨‍⚕️ Я врач", "en": "👨‍⚕️ I am a doctor"},
         "btn_contact": {"ru": "📱 Оставить контакты", "en": "📱 Leave contacts"},
         "btn_free_question": {"ru": "✍️ Написать свой вопрос", "en": "✍️ Write my question"},
@@ -163,11 +166,14 @@ def get_lang(update: Update) -> str:
 
 def main_menu_keyboard(lang: str, free_mode: bool = False) -> ReplyKeyboardMarkup:
     rows = [
-        [t("btn_plan", lang)],
-        [t("btn_doctor", lang)],
-        [t("btn_contact", lang), t("btn_free_question", lang)],
-        [t("btn_faq", lang)],
-    ]
+    [t("btn_plan", lang)],
+    [t("btn_family", lang)],
+    [t("btn_self", lang)],
+    [t("btn_not_sure", lang)],
+    [t("btn_free_question", lang)],
+    [t("btn_faq", lang)],
+    [t("btn_doctor", lang)],
+]
     if free_mode:
         rows.append([t("btn_end_free", lang)])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
@@ -393,6 +399,37 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == t("btn_plan", lang):
         return await plan_start(update, context)
+        
+    if text == t("btn_family", lang):
+        await update.message.reply_text(
+            "Это как раз та ситуация, где имеет смысл спокойно разобраться.\n\n"
+            "Но не обязательно сразу что-то делать.\n\n"
+            "Сначала важно понять:\n"
+            "это вообще влияет на вас или нет.",
+            reply_markup=main_menu_keyboard(lang),
+        )
+        return
+
+    if text == t("btn_self", lang):
+        await update.message.reply_text(
+            "Это самая частая точка входа.\n\n"
+            "Нет конкретной проблемы — просто хочется понять:\n"
+            "«а вдруг это всё-таки про меня?»\n\n"
+            "Здесь не нужно разбираться во всём.\n"
+            "Достаточно понять, есть ли вообще вопрос.",
+            reply_markup=main_menu_keyboard(lang),
+        )
+        return
+
+    if text == t("btn_not_sure", lang):
+        await update.message.reply_text(
+            "Это нормальная точка.\n\n"
+            "Большинство людей начинают именно с этого:\n"
+            "непонятно, нужно ли вообще в это погружаться.\n\n"
+            "Можно просто посмотреть и спокойно решить, есть ли здесь вопрос.",
+            reply_markup=main_menu_keyboard(lang),
+        )
+        return
 
     if text == t("btn_doctor", lang):
         return await doctor_menu_start(update, context)
