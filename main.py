@@ -63,13 +63,13 @@ def t(label: str, lang: str = "ru") -> str:
         "main_menu_title": {"ru": "Выберите, что ближе:", "en": "Choose what fits best:"},
 
         # Кнопки главного меню
-        "btn_plan": {"ru": "👶 Планируем / ждём ребёнка", "en": "👶 Planning / expecting a baby"},
-        "btn_family": {"ru": "🧬 Было что-то в семье", "en": "🧬 Family history"},
-        "btn_self": {"ru": "🤔 Просто хочу понять про себя", "en": "🤔 Just exploring"},
-        "btn_not_sure": {"ru": "🤷 Пока не понимаю, зачем это", "en": "🤷 Not sure yet"},
+        "btn_plan": {"ru": "👶 Планируем/\nждём ребёнка", "en": "👶 Planning/\nexpecting a baby"},
+        "btn_family": {"ru": "🧬 Было что-то\nв семье", "en": "🧬 Family\nhistory"},
+        "btn_self": {"ru": "🤔 Просто хочу\nпонять про себя", "en": "🤔 Just want to\nunderstand myself"},
+        "btn_not_sure": {"ru": "🤷 Пока не понимаю,\nзачем это", "en": "🤷 Not sure yet\nwhy I need this"},
         "btn_doctor": {"ru": "👨‍⚕️ Я врач", "en": "👨‍⚕️ I am a doctor"},
         "btn_contact": {"ru": "📱 Оставить контакты", "en": "📱 Leave contacts"},
-        "btn_free_question": {"ru": "✍️ Написать свой вопрос", "en": "✍️ Write my question"},
+        "btn_free_question": {"ru": "✍️ Написать свой\nвопрос", "en": "✍️ Write my\nquestion"},
         "btn_end_free": {"ru": "Закончить диалог / Вернуться к меню", "en": "End dialog / Back to menu"},
         "btn_faq": {"ru": "❓ FAQ", "en": "❓ FAQ"},
 
@@ -167,12 +167,9 @@ def get_lang(update: Update) -> str:
 
 def main_menu_keyboard(lang: str, free_mode: bool = False) -> ReplyKeyboardMarkup:
     rows = [
-        [t("btn_plan", lang)],
-        [t("btn_family", lang)],
-        [t("btn_self", lang)],
-        [t("btn_not_sure", lang)],
-        [t("btn_free_question", lang), t("btn_faq", lang)],
-        [t("btn_doctor", lang)],
+        [t("btn_plan", lang), t("btn_family", lang)],
+        [t("btn_self", lang), t("btn_not_sure", lang)],
+        [t("btn_free_question", lang), t("btn_faq", lang), t("btn_doctor", lang)],
     ]
     if free_mode:
         rows.append([t("btn_end_free", lang)])
@@ -394,13 +391,22 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = (update.message.text or "").strip()
 
-    # Совместимость со старой кнопкой (вдруг у кого-то сохранилось)
-    legacy_free_question = ["/Написать свой вопрос", "/Write my question"]
+    # Совместимость со старыми кнопками, которые могли сохраниться у пользователей
+    legacy_plan = ["👶 Планируем / ждём ребёнка", "👶 Planning / expecting a baby"]
+    legacy_family = ["🧬 Было что-то в семье", "🧬 Family history"]
+    legacy_self = ["🤔 Просто хочу понять про себя", "🤔 Just exploring"]
+    legacy_not_sure = ["🤷 Пока не понимаю, зачем это", "🤷 Not sure yet"]
+    legacy_free_question = [
+        "✍️ Написать свой вопрос",
+        "✍️ Write my question",
+        "/Написать свой вопрос",
+        "/Write my question",
+    ]
 
-    if text == t("btn_plan", lang):
+    if text == t("btn_plan", lang) or text in legacy_plan:
         return await plan_start(update, context)
 
-    if text == t("btn_family", lang):
+    if text == t("btn_family", lang) or text in legacy_family:
         context.user_data["free_mode"] = True
         await update.message.reply_text(
             "Это как раз та ситуация, где имеет смысл спокойно разобраться.\n\n"
@@ -415,7 +421,7 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if text == t("btn_self", lang):
+    if text == t("btn_self", lang) or text in legacy_self:
         context.user_data["free_mode"] = True
         await update.message.reply_text(
             "Это самая частая точка входа.\n\n"
@@ -430,7 +436,7 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if text == t("btn_not_sure", lang):
+    if text == t("btn_not_sure", lang) or text in legacy_not_sure:
         context.user_data["free_mode"] = True
         await update.message.reply_text(
             "Это нормальная точка.\n\n"
